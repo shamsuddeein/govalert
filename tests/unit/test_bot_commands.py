@@ -46,8 +46,6 @@ def test_handle_start_new_user():
     args, kwargs = mock_send.call_args
     assert kwargs['chat_id'] == 12345
     assert "Welcome to GovAlert" in kwargs['text']
-    assert 'reply_markup' in kwargs
-    assert 'inline_keyboard' in kwargs['reply_markup']
 
 
 @pytest.mark.django_db

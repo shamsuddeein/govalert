@@ -66,8 +66,7 @@ def handle_start(message: dict):
         send_message(
             chat_id=chat_id,
             text=WELCOME_MESSAGE.format(name=user.display_name),
-            parse_mode='HTML',
-            reply_markup=get_onboarding_keyboard()
+            parse_mode='HTML'
         )
         logger.info(f"New user {user.telegram_id} registered and subscribed.")
     else:
