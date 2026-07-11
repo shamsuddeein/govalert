@@ -40,6 +40,10 @@ def test_create_alert_from_scrape_fallback(mock_send, mock_ai):
     assert alert_real.deadline == '2025-12-31'
     assert alert_real.status == AlertStatus.APPROVED
 
+    # Clear database state to prevent the second call from being flagged as a duplicate
+    from apps.alerts.models import RecruitmentEvent
+    RecruitmentEvent.objects.all().delete()
+
     # 2. Scrape content with fraud keywords
     content_fraud = "NCS Recruitment. Pay a application fee of 5000 Naira to NCS bank account."
     alert_fraud = create_alert_from_scrape(portal, content_fraud, matched_data)

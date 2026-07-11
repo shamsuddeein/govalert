@@ -141,3 +141,51 @@ class AdminStatsView(APIView):
             'total_agencies': Agency.objects.filter(is_active=True).count(),
             'total_alerts': Alert.objects.count(),
         })
+
+
+class HealthView(APIView):
+    """Simple health endpoint for monitoring and uptime checks."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from django.db import connection
+        from django.conf import settings
+        data = {'status': 'ok'}
+
+        # Database check
+        try:
+            with connection.cursor() as cur:
+                cur.execute('SELECT 1')
+                _ = cur.fetchone()
+            data['database'] = 'connected'
+        except Exception:
+            data['database'] = 'unavailable'
+            data['status'] = 'degraded'
+
+        # Telegram check (basic: token presence)
+        bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '')
+        if bot_token:
+            data['telegram'] = 'configured'
+        else:
+            data['telegram'] = 'not_configured'
+            data['status'] = 'degraded'
+
+        # Scheduler check
+        try:
+            from config.scheduler import get_scheduler
+            sched = get_scheduler()
+            data['scheduler'] = 'running' if getattr(sched, 'running', False) else 'stopped'
+            if not getattr(sched, 'running', False):
+                data['status'] = 'degraded'
+        except Exception:
+            data['scheduler'] = 'unknown'
+            data['status'] = 'degraded'
+
+        # Scrapers / portals count
+        try:
+            from apps.agencies.models import Portal
+            data['scrapers'] = Portal.objects.filter(is_active=True).count()
+        except Exception:
+            data['scrapers'] = 0
+
+        return Response(data)

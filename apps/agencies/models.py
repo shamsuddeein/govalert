@@ -19,9 +19,27 @@ class AgencyCategory(models.TextChoices):
 
 
 class ScrapeMethod(models.TextChoices):
-    HTTP = 'HTTP', 'Simple HTTP (BeautifulSoup)'
+    REQUESTS = 'REQUESTS', 'HTTP Requests (BeautifulSoup)'
     PLAYWRIGHT = 'PLAYWRIGHT', 'Headless Browser (Playwright)'
     PDF = 'PDF', 'PDF Parser'
+    RSS = 'RSS', 'RSS Feed'
+    API = 'API', 'REST API'
+
+
+class PortalPriority(models.TextChoices):
+    HIGH = 'HIGH', 'High Priority (5 min)'
+    MEDIUM = 'MEDIUM', 'Medium Priority (20 min)'
+    LOW = 'LOW', 'Low Priority (60 min)'
+
+
+class HealthStatus(models.TextChoices):
+    ONLINE = 'ONLINE', 'Online / Healthy'
+    OFFLINE = 'OFFLINE', 'Offline'
+    BLOCKED = 'BLOCKED', 'Blocked by Firewall/Cloudflare'
+    CAPTCHA = 'CAPTCHA', 'Captcha Challenge Detected'
+    RATE_LIMITED = 'RATE_LIMITED', 'Rate Limited'
+    MAINTENANCE = 'MAINTENANCE', 'Under Maintenance'
+    UNKNOWN = 'UNKNOWN', 'Unknown'
 
 
 class PortalStatus(models.TextChoices):
@@ -123,21 +141,42 @@ class Portal(models.Model):
     scrape_method = models.CharField(
         max_length=20,
         choices=ScrapeMethod.choices,
-        default=ScrapeMethod.HTTP,
+        default=ScrapeMethod.REQUESTS,
     )
     check_interval_minutes = models.PositiveIntegerField(
         default=15,
-        help_text="How often to check this portal (minutes). Default: 15."
+        help_text="Legacy field. Use poll_interval instead (in seconds)."
+    )
+    poll_interval = models.PositiveIntegerField(
+        default=900,
+        help_text="How often to check this portal (seconds). 300=5min, 900=15min, 1800=30min, 3600=60min."
+    )
+    priority = models.CharField(
+        max_length=10,
+        choices=PortalPriority.choices,
+        default=PortalPriority.MEDIUM,
+        db_index=True,
+        help_text="Portal priority: HIGH (5 min), MEDIUM (20 min), LOW (60 min)."
     )
     is_active = models.BooleanField(
         default=True,
-        help_text="Set to False to pause monitoring without deleting."
+        help_text="Set to False to pause monitoring without deleting.",
+        db_index=True,
     )
+    health_status = models.CharField(
+        max_length=30,
+        choices=HealthStatus.choices,
+        default=HealthStatus.UNKNOWN,
+        db_index=True,
+        help_text="Current health status of the portal."
+    )
+    # Keep 'status' for backward compatibility with existing code
     status = models.CharField(
         max_length=30,
         choices=PortalStatus.choices,
         default=PortalStatus.UNKNOWN,
         db_index=True,
+        help_text="Deprecated. Use health_status instead."
     )
 
     # ── Health Stats ──────────────────────────────────────────────────────────
@@ -151,8 +190,25 @@ class Portal(models.Model):
     uptime_percentage = models.DecimalField(
         max_digits=5, decimal_places=2, default=100.00
     )
+    confidence = models.PositiveIntegerField(
+        default=100,
+        help_text="Scraping reliability score (0-100). Decreases on failures."
+    )
+    response_time_ms = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Last recorded response time in milliseconds."
+    )
 
-    # ── Notes ─────────────────────────────────────────────────────────────────
+    # ── Metadata ──────────────────────────────────────────────────────────────
+    tags = models.JSONField(
+        default=list,
+        help_text="List of tags/categories: ['Security', 'Finance', 'Education', etc.]"
+    )
+    country = models.CharField(
+        max_length=2,
+        default='NG',
+        help_text="Country code (NG=Nigeria, GH=Ghana, etc.)"
+    )
     notes = models.TextField(
         blank=True, default='',
         help_text="Internal admin notes about this portal."

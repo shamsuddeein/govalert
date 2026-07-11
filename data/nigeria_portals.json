@@ -1,0 +1,494 @@
+[
+    {
+        "name": "Federal Civil Service Commission",
+        "acronym": "FCSC",
+        "url": "https://fedcivilservice.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Civil Service",
+            "Government"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigeria Police Force Recruitment",
+        "acronym": "NPF",
+        "url": "https://recruitment.psc.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Law Enforcement"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Police Service Commission",
+        "acronym": "PSC",
+        "url": "https://psc.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Law Enforcement"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigeria Immigration Service",
+        "acronym": "NIS",
+        "url": "https://immigration.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Border Control"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigeria Customs Service",
+        "acronym": "NCS",
+        "url": "https://customs.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Revenue"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigeria Security and Civil Defence Corps",
+        "acronym": "NSCDC",
+        "url": "https://cdcfib.career",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Civil Defence"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Fire Service",
+        "acronym": "FFS",
+        "url": "https://cdcfib.career",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Emergency Services"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Correctional Service",
+        "acronym": "NCoS",
+        "url": "https://cdcfib.career",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Justice"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Civil Defence, Correctional, Fire and Immigration Board",
+        "acronym": "CDCFIB",
+        "url": "https://cdcfib.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Coordination"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Road Safety Corps",
+        "acronym": "FRSC",
+        "url": "https://frsc.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Transport"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Army",
+        "acronym": "Army",
+        "url": "https://recruitment.army.mil.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Defence"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Navy",
+        "acronym": "Navy",
+        "url": "https://joinnigeriannavy.com",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Defence"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Air Force",
+        "acronym": "NAF",
+        "url": "https://nafrecruitment.airforce.mil.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Defence"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Defence Academy",
+        "acronym": "NDA",
+        "url": "https://nda.edu.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Education"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Department of State Services",
+        "acronym": "DSS",
+        "url": "https://dss.gov.ng",
+        "priority": "HIGH",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Intelligence"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "National Drug Law Enforcement Agency",
+        "acronym": "NDLEA",
+        "url": "https://ndlea.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Law Enforcement"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Economic and Financial Crimes Commission",
+        "acronym": "EFCC",
+        "url": "https://efcc.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Anti-Corruption"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Independent Corrupt Practices Commission",
+        "acronym": "ICPC",
+        "url": "https://icpc.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Security",
+            "Anti-Corruption"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Independent National Electoral Commission",
+        "acronym": "INEC",
+        "url": "https://inecnigeria.org",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Civil Service",
+            "Elections"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian National Petroleum Company",
+        "acronym": "NNPC",
+        "url": "https://careers.nnpcgroup.com",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Energy",
+            "Oil & Gas"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Central Bank of Nigeria",
+        "acronym": "CBN",
+        "url": "https://cbn.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Finance",
+            "Banking"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Inland Revenue Service",
+        "acronym": "FIRS",
+        "url": "https://firs.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Finance",
+            "Revenue"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Ports Authority",
+        "acronym": "NPA",
+        "url": "https://nigerianports.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Infrastructure",
+            "Maritime"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Maritime Administration and Safety Agency",
+        "acronym": "NIMASA",
+        "url": "https://nimasa.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Infrastructure",
+            "Maritime"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Railway Corporation",
+        "acronym": "NRC",
+        "url": "https://nrc.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Infrastructure",
+            "Transport"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Nigerian Communications Commission",
+        "acronym": "NCC",
+        "url": "https://ncc.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Infrastructure",
+            "Telecommunications"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "National Information Technology Development Agency",
+        "acronym": "NITDA",
+        "url": "https://nitda.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Science & Technology",
+            "IT"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Joint Admissions and Matriculation Board",
+        "acronym": "JAMB",
+        "url": "https://jamb.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Education",
+            "Examinations"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "National Agency for Food and Drug Administration and Control",
+        "acronym": "NAFDAC",
+        "url": "https://nafdac.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Health",
+            "Regulation"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "National Identity Management Commission",
+        "acronym": "NIMC",
+        "url": "https://nimc.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Identity",
+            "Registration"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Universal Basic Education Commission",
+        "acronym": "UBEC",
+        "url": "https://ubec.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Education",
+            "Primary"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Teachers Registration Council of Nigeria",
+        "acronym": "TRCN",
+        "url": "https://trcn.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Education",
+            "Teachers"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "National Health Insurance Authority",
+        "acronym": "NHIA",
+        "url": "https://nhia.gov.ng",
+        "priority": "MEDIUM",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Health",
+            "Insurance"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Health",
+        "acronym": "FMH",
+        "url": "https://health.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Health",
+            "Ministry"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Education",
+        "acronym": "FME",
+        "url": "https://education.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Education",
+            "Ministry"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Interior",
+        "acronym": "FMI",
+        "url": "https://interior.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Government",
+            "Ministry"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Defence",
+        "acronym": "FMD",
+        "url": "https://defence.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Defence",
+            "Ministry"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Finance",
+        "acronym": "FMF",
+        "url": "https://finance.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Finance",
+            "Ministry"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Works",
+        "acronym": "FMW",
+        "url": "https://works.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Infrastructure",
+            "Ministry"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Agriculture",
+        "acronym": "FMA",
+        "url": "https://agriculture.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Agriculture",
+            "Ministry"
+        ],
+        "country": "NG"
+    },
+    {
+        "name": "Federal Ministry of Environment",
+        "acronym": "FMEnv",
+        "url": "https://environment.gov.ng",
+        "priority": "LOW",
+        "scrape_method": "REQUESTS",
+        "tags": [
+            "Environment",
+            "Ministry"
+        ],
+        "country": "NG"
+    }
+]

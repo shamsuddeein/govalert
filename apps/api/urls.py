@@ -20,6 +20,7 @@ public_patterns = [
     path('agencies/<int:pk>/', views.AgencyDetailView.as_view(), name='agency_detail'),
     path('alerts/latest/', views.LatestAlertsView.as_view(), name='latest_alerts'),
     path('portals/status/', views.PortalStatusView.as_view(), name='portal_status'),
+    path('health/', views.HealthView.as_view(), name='health'),
 ]
 
 # ── Admin ─────────────────────────────────────────────────────────────────────

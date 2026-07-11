@@ -25,6 +25,13 @@ class AlertStatus(models.TextChoices):
     HELD = 'HELD', 'Held for Admin Review'
 
 
+class EventStatus(models.TextChoices):
+    """Status of a RecruitmentEvent: whether it's new, an update, or closed."""
+    NEW = 'NEW', 'New Recruitment Detected'
+    UPDATED = 'UPDATED', 'Existing Recruitment Updated'
+    CLOSED = 'CLOSED', 'Recruitment Closed'
+
+
 class RecruitmentEvent(models.Model):
     """
     Represents a raw change/recruitment event detected by the monitor.
@@ -33,6 +40,24 @@ class RecruitmentEvent(models.Model):
     event_id = models.CharField(
         max_length=50, unique=True,
         help_text="Unique event code, e.g. evt_20260711_000412"
+    )
+    fingerprint = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        help_text="SHA-256 fingerprint of recruitment identifying data. Used for deduplication."
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=EventStatus.choices,
+        default=EventStatus.NEW,
+        db_index=True,
+        help_text="Whether this is a new recruitment, an update, or closure."
+    )
+    previous_event = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='updates',
+        help_text="If status=UPDATED, link to the previous event."
     )
     portal = models.ForeignKey(
         'agencies.Portal',
@@ -45,6 +70,18 @@ class RecruitmentEvent(models.Model):
         default=EventType.RECRUITMENT_OPEN
     )
     content_hash = models.CharField(max_length=64, blank=True, default='')
+    title = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="Recruitment title for display and comparison."
+    )
+    deadline = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Application deadline."
+    )
+    positions = models.TextField(
+        blank=True, default='',
+        help_text="Positions available."
+    )
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -52,7 +89,7 @@ class RecruitmentEvent(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.event_id} — {self.event_type} — {self.portal.agency.acronym}"
+        return f"{self.event_id} — {self.status} — {self.event_type} — {self.portal.agency.acronym}"
 
 
 class DecisionLog(models.Model):
@@ -79,6 +116,22 @@ class DecisionLog(models.Model):
     reason = models.TextField(
         blank=True, default='',
         help_text="Human readable summary of the decision."
+    )
+    title = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="Recruitment title at time of decision."
+    )
+    deadline = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Deadline at time of decision."
+    )
+    positions = models.TextField(
+        blank=True, default='',
+        help_text="Positions at time of decision."
+    )
+    changes = models.JSONField(
+        default=dict, blank=True,
+        help_text="Fields that changed compared to previous event."
     )
     created_at = models.DateTimeField(default=timezone.now)
 
