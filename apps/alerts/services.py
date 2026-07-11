@@ -17,9 +17,36 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     # 1. Run AI classification
     try:
         ai_res = classify_recruitment_with_ai(agency.name, portal.url, content)
+        if not ai_res:
+            raise ValueError("AI returned empty classification response.")
     except Exception as exc:
-        logger.error(f"AI classification failed: {exc}")
-        ai_res = {}
+        logger.warning(f"AI classification failed ({exc}). Falling back to Rule Engine.")
+        # Rule-based fallback engine
+        content_lower = content.lower()
+        has_fraud_keywords = any(kw in content_lower for kw in ["fee", "pay", "charge", "naira", "deposit", "payment", "bank"])
+        has_recruitment_keywords = any(kw in content_lower for kw in ["recruitment", "careers", "apply", "job", "vacancy"])
+
+        classification = 'REAL'
+        confidence = 75
+
+        if has_fraud_keywords:
+            classification = 'SUSPICIOUS'
+            confidence = 80
+        elif not has_recruitment_keywords:
+            classification = 'UNCERTAIN'
+            confidence = 50
+
+        ai_res = {
+            'classification': classification,
+            'confidence': confidence,
+            'event_type': 'RECRUITMENT_OPEN' if has_recruitment_keywords else 'OTHER',
+            'red_flags': ['FRAUD_KEYWORDS_DETECTED'] if has_fraud_keywords else [],
+            'extracted': {
+                'positions': matched_data.get('positions') or "Multiple Positions",
+                'deadline': matched_data.get('deadline') or "",
+                'requirements': "Check website"
+            }
+        }
 
     # 2. Calculate trust score
     ai_confidence = ai_res.get('confidence', 70)

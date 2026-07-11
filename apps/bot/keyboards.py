@@ -45,6 +45,15 @@ def get_settings_keyboard() -> dict:
     ])
 
 
+def get_onboarding_keyboard() -> dict:
+    return _build_keyboard([
+        [
+            {'text': '⚙️ Customize Alerts', 'data': 'show_settings'},
+            {'text': '✅ Done', 'data': 'onboarding_done'}
+        ]
+    ])
+
+
 def get_report_reason_keyboard(alert_id: int) -> dict:
     return _build_keyboard([
         [{'text': '💰 Asked me to pay', 'data': f'report_reason:{alert_id}:PAYMENT'}],

@@ -28,6 +28,10 @@ def handle_callback(callback_query: dict):
         _handle_toggle_alerts(callback_query)
     elif data == 'unsubscribe_confirm':
         _handle_unsubscribe_confirm(callback_query)
+    elif data == 'onboarding_done':
+        _handle_onboarding_done(callback_query)
+    elif data == 'show_settings':
+        _handle_show_settings(callback_query)
     else:
         logger.warning(f"Unknown callback data: {data}")
 
@@ -167,3 +171,32 @@ def _escalate_to_admin(alert):
             send_message(chat_id=admin.telegram_id, text=text, parse_mode='HTML')
         except Exception as exc:
             logger.error(f"Could not notify admin {admin.telegram_id}: {exc}")
+
+
+def _handle_onboarding_done(callback_query: dict):
+    from apps.notifications.sender import answer_callback_query, send_message
+    chat_id = callback_query.get('message', {}).get('chat', {}).get('id')
+    answer_callback_query(callback_query['id'], text="🎉 All setup!")
+    send_message(chat_id=chat_id, text="👍 <b>Awesome! You are all set.</b>\n\nYou'll receive alerts as soon as openings are detected. Type /help at any time to list commands.", parse_mode='HTML')
+
+
+def _handle_show_settings(callback_query: dict):
+    from apps.accounts.models import TelegramUser
+    from apps.notifications.sender import answer_callback_query, send_message
+    from apps.bot.keyboards import get_settings_keyboard
+    telegram_id = callback_query.get('from', {}).get('id')
+    chat_id = callback_query.get('message', {}).get('chat', {}).get('id')
+
+    try:
+        user = TelegramUser.objects.get(telegram_id=telegram_id)
+        answer_callback_query(callback_query['id'])
+        text = (
+            f"⚙️ <b>Settings & Customization</b>\n\n"
+            f"🌍 Timezone: <code>{user.timezone}</code>\n"
+            f"🔔 Alerts: {'Enabled' if user.receive_alerts else 'Disabled'}\n"
+            f"💬 Language: {user.language.upper()}\n\n"
+            f"Use the buttons below to customize your alerts."
+        )
+        send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=get_settings_keyboard())
+    except TelegramUser.DoesNotExist:
+        pass

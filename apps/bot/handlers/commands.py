@@ -50,6 +50,7 @@ def handle_start(message: dict):
     from apps.subscriptions.services import auto_subscribe_all
     from apps.notifications.sender import send_message
     from apps.bot.messages import WELCOME_MESSAGE, RETURNING_MESSAGE
+    from apps.bot.keyboards import get_onboarding_keyboard
 
     user, created = _get_or_create_user(message)
     if not user:
@@ -62,7 +63,12 @@ def handle_start(message: dict):
         auto_subscribe_all(user)
         user.state = 'ACTIVE'
         user.save(update_fields=['state'])
-        send_message(chat_id=chat_id, text=WELCOME_MESSAGE.format(name=user.display_name), parse_mode='HTML')
+        send_message(
+            chat_id=chat_id,
+            text=WELCOME_MESSAGE.format(name=user.display_name),
+            parse_mode='HTML',
+            reply_markup=get_onboarding_keyboard()
+        )
         logger.info(f"New user {user.telegram_id} registered and subscribed.")
     else:
         # Returning user — just greet them, subscriptions are already active

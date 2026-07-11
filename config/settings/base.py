@@ -217,3 +217,6 @@ TELEGRAM_RATE_LIMIT_PER_USER = 1
 PORTALS_JSON_PATH = BASE_DIR / 'config' / 'portals.json'
 AGENCIES_JSON_PATH = BASE_DIR / 'config' / 'agencies.json'
 INDEX_JSON_PATH = BASE_DIR / 'config' / 'index.json'
+
+# ─── Storage Abstraction ───────────────────────────────────────────────────────
+STORAGE_BACKEND = 'core.storage.DjangoORMStorageBackend'
