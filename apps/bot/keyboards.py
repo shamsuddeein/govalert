@@ -45,6 +45,12 @@ def get_settings_keyboard() -> dict:
     ])
 
 
+def get_start_keyboard() -> dict:
+    return _build_keyboard([
+        [{'text': '⚙️ Manage Subscriptions', 'data': 'show_settings'}],
+    ])
+
+
 def get_onboarding_keyboard() -> dict:
     return _build_keyboard([
         [
