@@ -1,5 +1,5 @@
 """
-GovAlert — Root URL Configuration
+GovAlert — Root URL Configuration (Phase 1)
 """
 from django.contrib import admin
 from django.urls import path, include
@@ -15,15 +15,9 @@ urlpatterns = [
 
     # REST API
     path('api/', include('apps.api.urls')),
-
-    # Prometheus metrics
-    path('', include('django_prometheus.urls')),
 ]
 
 # Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-
-    # Silk profiler
-    urlpatterns += [path('silk/', include('silk.urls', namespace='silk'))]

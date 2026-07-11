@@ -25,6 +25,17 @@ You're now subscribed to <b>30+ agencies</b> including:
 /help — Full command list
 """
 
+RETURNING_MESSAGE = """
+🇳🇬 <b>Welcome back to GovAlert, {name}!</b>
+
+Your subscriptions are active. You will receive alerts as soon as new job postings are detected.
+
+<b>Quick Commands:</b>
+/jobs — View latest jobs
+/status — Check portal statuses
+/settings — Manage your preferences
+"""
+
 CONSENT_MESSAGE = """
 🔒 <b>Data Privacy Notice</b>
 

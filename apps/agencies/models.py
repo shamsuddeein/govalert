@@ -4,7 +4,6 @@ Agency — a Nigerian government body being monitored.
 Portal — a specific URL within an agency that is scraped for recruitment news.
 """
 from django.db import models
-from django.contrib.postgres.fields import ArrayField
 
 
 class AgencyCategory(models.TextChoices):
@@ -42,9 +41,9 @@ class Agency(models.Model):
         max_length=20, unique=True,
         help_text="Short code e.g. NNPC, NCS, EFCC."
     )
-    official_domains = ArrayField(
-        models.CharField(max_length=100),
-        help_text="Array of whitelisted official domains e.g. ['customs.gov.ng']"
+    official_domains = models.JSONField(
+        default=list,
+        help_text="List of whitelisted official domains e.g. [\"customs.gov.ng\"]"
     )
     logo_url = models.URLField(
         blank=True, default='',

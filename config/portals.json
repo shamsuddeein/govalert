@@ -1,0 +1,206 @@
+[
+  {
+    "id": "nnpc",
+    "acronym": "NNPC",
+    "name": "Nigerian National Petroleum Corporation",
+    "official_domains": ["nnpcgroup.com", "nnpc.gov.ng"],
+    "category": "UTILITIES",
+    "priority": "HIGH",
+    "portals": [
+      {
+        "name": "NNPC Careers",
+        "url": "https://nnpcgroup.com/careers",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 10,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "ncs",
+    "acronym": "NCS",
+    "name": "Nigeria Customs Service",
+    "official_domains": ["customs.gov.ng"],
+    "category": "SECURITY",
+    "priority": "HIGH",
+    "portals": [
+      {
+        "name": "NCS Recruitment Portal",
+        "url": "https://customs.gov.ng/recruitment",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 10,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "efcc",
+    "acronym": "EFCC",
+    "name": "Economic and Financial Crimes Commission",
+    "official_domains": ["efcc.gov.ng"],
+    "category": "SECURITY",
+    "priority": "HIGH",
+    "portals": [
+      {
+        "name": "EFCC Recruitment",
+        "url": "https://efcc.gov.ng/recruitment",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 10,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "cbn",
+    "acronym": "CBN",
+    "name": "Central Bank of Nigeria",
+    "official_domains": ["cbn.gov.ng"],
+    "category": "FINANCE",
+    "priority": "STANDARD",
+    "portals": [
+      {
+        "name": "CBN Careers",
+        "url": "https://cbn.gov.ng/careers",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 15,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "firs",
+    "acronym": "FIRS",
+    "name": "Federal Inland Revenue Service",
+    "official_domains": ["firs.gov.ng"],
+    "category": "FINANCE",
+    "priority": "STANDARD",
+    "portals": [
+      {
+        "name": "FIRS Careers",
+        "url": "https://firs.gov.ng/careers",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 15,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "npf",
+    "acronym": "NPF",
+    "name": "Nigeria Police Force",
+    "official_domains": ["npf.gov.ng", "policerecruitment.gov.ng"],
+    "category": "SECURITY",
+    "priority": "HIGH",
+    "portals": [
+      {
+        "name": "NPF Recruitment",
+        "url": "https://npf.gov.ng/recruitment",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 10,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "nscdc",
+    "acronym": "NSCDC",
+    "name": "Nigeria Security and Civil Defence Corps",
+    "official_domains": ["nscdc.gov.ng"],
+    "category": "SECURITY",
+    "priority": "STANDARD",
+    "portals": [
+      {
+        "name": "NSCDC Recruitment",
+        "url": "https://nscdc.gov.ng/recruitment",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 15,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "nis",
+    "acronym": "NIS",
+    "name": "Nigeria Immigration Service",
+    "official_domains": ["immigration.gov.ng"],
+    "category": "SECURITY",
+    "priority": "STANDARD",
+    "portals": [
+      {
+        "name": "NIS Recruitment Portal",
+        "url": "https://immigration.gov.ng/recruitment",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 15,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "nafdac",
+    "acronym": "NAFDAC",
+    "name": "National Agency for Food and Drug Administration and Control",
+    "official_domains": ["nafdac.gov.ng"],
+    "category": "HEALTH",
+    "priority": "STANDARD",
+    "portals": [
+      {
+        "name": "NAFDAC Vacancies",
+        "url": "https://nafdac.gov.ng/careers",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 15,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "jamb",
+    "acronym": "JAMB",
+    "name": "Joint Admissions and Matriculation Board",
+    "official_domains": ["jamb.gov.ng"],
+    "category": "EDUCATION",
+    "priority": "STANDARD",
+    "portals": [
+      {
+        "name": "JAMB Recruitment",
+        "url": "https://jamb.gov.ng/recruitment",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 15,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "faan",
+    "acronym": "FAAN",
+    "name": "Federal Airports Authority of Nigeria",
+    "official_domains": ["faan.gov.ng"],
+    "category": "TRANSPORT",
+    "priority": "STANDARD",
+    "portals": [
+      {
+        "name": "FAAN Careers",
+        "url": "https://faan.gov.ng/careers",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 15,
+        "last_hash": ""
+      }
+    ]
+  },
+  {
+    "id": "nbs",
+    "acronym": "NBS",
+    "name": "National Bureau of Statistics",
+    "official_domains": ["nigerianstat.gov.ng"],
+    "category": "STATISTICS",
+    "priority": "LOW",
+    "portals": [
+      {
+        "name": "NBS Vacancies",
+        "url": "https://nigerianstat.gov.ng/careers",
+        "scrape_method": "HTTP",
+        "check_interval_minutes": 30,
+        "last_hash": ""
+      }
+    ]
+  }
+]

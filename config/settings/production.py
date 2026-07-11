@@ -1,9 +1,9 @@
 """
-GovAlert Django Settings — Production
-No DEBUG. S3 storage. Strict security headers.
+GovAlert Django Settings — Production (Phase 1)
+Free-tier deployment: Railway / Render / fly.io
+Still SQLite — no PostgreSQL needed until Phase 2.
 """
 from .base import *  # noqa
-from decouple import config
 
 DEBUG = False
 
@@ -13,29 +13,34 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_BROWSER_XSS_FILTER = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 X_FRAME_OPTIONS = 'DENY'
 
-# ─── AWS S3 Storage ────────────────────────────────────────────────────────────
-AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY')
-AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME')
-AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='us-east-1')
-AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
-AWS_DEFAULT_ACL = 'public-read'
-AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
-
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-STATICFILES_STORAGE = 'storages.backends.s3boto3.S3StaticStorage'
-
 # ─── Logging — Production ──────────────────────────────────────────────────────
 LOGGING['handlers']['file'] = {
     'class': 'logging.handlers.RotatingFileHandler',
-    'filename': '/var/log/govalert/django.log',
+    'filename': 'logs/govalert.log',
     'maxBytes': 10 * 1024 * 1024,  # 10 MB
     'backupCount': 5,
     'formatter': 'verbose',
 }
 LOGGING['root']['handlers'] = ['console', 'file']
+
+# ─── Phase 2 upgrade hints (commented out — uncomment when ready) ──────────────
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': config('DB_NAME'),
+#         'USER': config('DB_USER'),
+#         'PASSWORD': config('DB_PASSWORD'),
+#         'HOST': config('DB_HOST'),
+#         'PORT': config('DB_PORT', default='5432'),
+#     }
+# }
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django_redis.cache.RedisCache',
+#         'LOCATION': config('REDIS_URL'),
+#     }
+# }

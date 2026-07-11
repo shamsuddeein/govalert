@@ -1,0 +1,12 @@
+{
+  "events_channel": {
+    "last_message_id": 0,
+    "last_event_id": "",
+    "last_check": ""
+  },
+  "backup_channel": {
+    "last_backup_id": 0,
+    "last_backup": ""
+  },
+  "total_events_processed": 0
+}

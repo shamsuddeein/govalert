@@ -40,13 +40,16 @@ def _get_or_create_user(message: dict):
 
 def handle_start(message: dict):
     """
-    /start — Register user + auto-subscribe to ALL agencies.
+    /start — Register user + auto-subscribe to ALL agencies immediately.
     FR-U001, FR-S001.
+
+    Volume 2 (updated): No consent gate. One tap = fully subscribed.
+    New user  → create record, subscribe all, send WELCOME message.
+    Returning → send RETURNING message (already subscribed, nothing to do).
     """
     from apps.subscriptions.services import auto_subscribe_all
     from apps.notifications.sender import send_message
-    from apps.bot.messages import WELCOME_MESSAGE, CONSENT_MESSAGE
-    from apps.bot.keyboards import get_consent_keyboard
+    from apps.bot.messages import WELCOME_MESSAGE, RETURNING_MESSAGE
 
     user, created = _get_or_create_user(message)
     if not user:
@@ -54,18 +57,18 @@ def handle_start(message: dict):
 
     chat_id = message['chat']['id']
 
-    if not user.consented_to_data_policy:
-        # Show NDPR consent first
-        send_message(chat_id=chat_id, text=CONSENT_MESSAGE, reply_markup=get_consent_keyboard())
-        return
-
-    # Auto-subscribe to all agencies
-    auto_subscribe_all(user)
-    user.state = 'ACTIVE'
-    user.save(update_fields=['state'])
-
-    send_message(chat_id=chat_id, text=WELCOME_MESSAGE.format(name=user.display_name))
-    logger.info(f"User {user.telegram_id} started the bot. New={created}")
+    if created:
+        # New user — subscribe to everything immediately
+        auto_subscribe_all(user)
+        user.state = 'ACTIVE'
+        user.save(update_fields=['state'])
+        send_message(chat_id=chat_id, text=WELCOME_MESSAGE.format(name=user.display_name), parse_mode='HTML')
+        logger.info(f"New user {user.telegram_id} registered and subscribed.")
+    else:
+        # Returning user — just greet them, subscriptions are already active
+        user.mark_active()
+        send_message(chat_id=chat_id, text=RETURNING_MESSAGE.format(name=user.display_name), parse_mode='HTML')
+        logger.info(f"Returning user {user.telegram_id} re-started bot.")
 
 
 def handle_help(message: dict):

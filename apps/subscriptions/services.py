@@ -40,12 +40,9 @@ def auto_subscribe_all(user: TelegramUser) -> int:
     ).update(is_active=True, unsubscribed_at=None)
 
     # Update subscriber counts
-    Agency.objects.filter(is_active=True).update(
-        subscriber_count=Subscription.objects.filter(
-            agency=Agency.objects.filter(is_active=True).values('id'),
-            is_active=True,
-        ).count()
-    )
+    for agency in Agency.objects.filter(is_active=True):
+        agency.subscriber_count = Subscription.objects.filter(agency=agency, is_active=True).count()
+        agency.save(update_fields=['subscriber_count'])
 
     logger.info(f"Auto-subscribed user {user.telegram_id} to {len(active_agencies)} agencies.")
     return len(created)

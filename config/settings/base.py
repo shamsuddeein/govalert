@@ -1,6 +1,7 @@
 """
-GovAlert Django Settings — Base
-Shared across all environments.
+GovAlert Django Settings — Base (Phase 1)
+₦0/month architecture: SQLite + APScheduler + Telegram channels.
+No PostgreSQL, no Redis, no Celery required.
 """
 from pathlib import Path
 from decouple import config, Csv
@@ -27,14 +28,12 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
-    'django_celery_beat',
-    'django_celery_results',
-    'django_prometheus',
+    'django_apscheduler',   # Phase 1 scheduler — no Redis needed
 
     # Project apps
-    'apps.accounts',
+    'apps.accounts.apps.AccountsConfig',
     'apps.agencies',
-    'apps.monitor',
+    'apps.monitor.apps.MonitorConfig',
     'apps.detector',
     'apps.alerts',
     'apps.subscriptions',
@@ -45,7 +44,6 @@ INSTALLED_APPS = [
 
 # ─── Middleware ─────────────────────────────────────────────────────────────────
 MIDDLEWARE = [
-    'django_prometheus.middleware.PrometheusBeforeMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -54,7 +52,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -79,57 +76,31 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-# ─── Database ──────────────────────────────────────────────────────────────────
+# ─── Database — Phase 1: SQLite ────────────────────────────────────────────────
+# Single file, no server, no cost.
+# Phase 2: change ENGINE to postgresql and update remaining keys.
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='govalert_db'),
-        'USER': config('DB_USER', default='govalert'),
-        'PASSWORD': config('DB_PASSWORD', default='password'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
-        'CONN_MAX_AGE': 60,
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'users.db',
         'OPTIONS': {
-            'connect_timeout': 10,
+            'timeout': 20,
         },
     }
 }
 
-# ─── Cache (Redis) ─────────────────────────────────────────────────────────────
-REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
-
+# ─── Cache — Phase 1: Local Memory ─────────────────────────────────────────────
+# No Redis needed. LocMemCache is per-process — fine for single-server MVP.
+# Phase 2: Switch to django_redis.cache.RedisCache
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': REDIS_URL,
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-        },
-        'KEY_PREFIX': 'govalert',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'govalert-cache',
     }
 }
 
-# ─── Celery ────────────────────────────────────────────────────────────────────
-CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'Africa/Lagos'
-CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 300  # 5 minutes max per task
-CELERY_TASK_SOFT_TIME_LIMIT = 240
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Fair task distribution
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
-
-# Celery queues
-CELERY_TASK_ROUTES = {
-    'apps.monitor.tasks.*': {'queue': 'monitoring'},
-    'apps.notifications.tasks.*': {'queue': 'notifications'},
-    'apps.detector.tasks.*': {'queue': 'ai'},
-}
+# ─── Sessions ──────────────────────────────────────────────────────────────────
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Stored in SQLite
 
 # ─── DRF ───────────────────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
@@ -141,14 +112,6 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardResultsPagination',
     'PAGE_SIZE': 20,
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/min',
-        'user': '500/min',
-    },
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
@@ -184,6 +147,10 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ─── APScheduler ───────────────────────────────────────────────────────────────
+APSCHEDULER_DATETIME_FORMAT = "N j, Y, f:s a"
+APSCHEDULER_RUN_NOW_TIMEOUT = 25  # seconds
+
 # ─── Logging ───────────────────────────────────────────────────────────────────
 LOGGING = {
     'version': 1,
@@ -191,10 +158,6 @@ LOGGING = {
     'formatters': {
         'verbose': {
             'format': '[{asctime}] {levelname} {name} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
             'style': '{',
         },
     },
@@ -211,7 +174,7 @@ LOGGING = {
     'loggers': {
         'django': {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},
         'apps': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
-        'celery': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'apscheduler': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
     },
 }
 
@@ -221,23 +184,36 @@ TELEGRAM_WEBHOOK_SECRET = config('TELEGRAM_WEBHOOK_SECRET', default='')
 TELEGRAM_WEBHOOK_URL = config('TELEGRAM_WEBHOOK_URL', default='')
 SUPER_ADMIN_TELEGRAM_IDS = config('SUPER_ADMIN_TELEGRAM_IDS', default='', cast=Csv(cast=int))
 
+# ─── Telegram Channels (Phase 1 Storage) ───────────────────────────────────────
+# Private channel for event log (one JSON message per recruitment event)
+TELEGRAM_EVENTS_CHANNEL_ID = config('TELEGRAM_EVENTS_CHANNEL_ID', default='')
+# Public channel for human-readable alert feed
+TELEGRAM_PUBLIC_CHANNEL_ID = config('TELEGRAM_PUBLIC_CHANNEL_ID', default='')
+# Private channel for nightly SQLite backup
+TELEGRAM_BACKUP_CHANNEL_ID = config('TELEGRAM_BACKUP_CHANNEL_ID', default='')
+
 # ─── Gemini AI ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 GEMINI_MODEL = 'gemini-1.5-flash'
 GEMINI_MAX_CALLS_PER_MINUTE = 60
 
 # ─── GovAlert App Settings ─────────────────────────────────────────────────────
-PORTAL_CHECK_INTERVAL_MINUTES = 15          # Default check interval
-PORTAL_CHECK_INTERVAL_HIGH_PRIORITY = 10    # For NNPC, EFCC, NCS
-PORTAL_CHECK_INTERVAL_LOW_ACTIVITY = 30     # For low-traffic agencies
-MAX_PLAYWRIGHT_INSTANCES = 3                # Memory limit
-ALERT_DEDUP_WINDOW_HOURS = 24               # No duplicate alerts within this window
-ALERT_HISTORY_MONTHS = 12                   # How long to store alert history
-MAX_USER_HISTORY_DISPLAY = 20               # /history command limit
-SCRAPER_REQUEST_DELAY_MIN = 2               # Minimum seconds between requests
-SCRAPER_REQUEST_DELAY_MAX = 8              # Maximum seconds between requests
-TRUST_SCORE_SEND_THRESHOLD = 50            # Minimum score to send to users
-TRUST_SCORE_ADMIN_REVIEW_THRESHOLD = 30    # Below this = hold for admin
-TRUST_SCORE_FAKE_THRESHOLD = 29            # Below this = blacklist + discard
-TELEGRAM_RATE_LIMIT_PER_SECOND = 30       # Global Telegram send rate
-TELEGRAM_RATE_LIMIT_PER_USER = 1          # Per-user rate limit
+PORTAL_CHECK_INTERVAL_MINUTES = 15
+PORTAL_CHECK_INTERVAL_HIGH_PRIORITY = 10
+PORTAL_CHECK_INTERVAL_LOW_ACTIVITY = 30
+MAX_PLAYWRIGHT_INSTANCES = 3
+ALERT_DEDUP_WINDOW_HOURS = 24
+MAX_USER_HISTORY_DISPLAY = 20
+SCRAPER_REQUEST_DELAY_MIN = 2
+SCRAPER_REQUEST_DELAY_MAX = 8
+TRUST_SCORE_SEND_THRESHOLD = 50
+TRUST_SCORE_ADMIN_REVIEW_THRESHOLD = 30
+TRUST_SCORE_FAKE_THRESHOLD = 29
+TELEGRAM_RATE_LIMIT_PER_SECOND = 30
+TELEGRAM_RATE_LIMIT_PER_USER = 1
+
+# ─── Local Config File Paths ────────────────────────────────────────────────────
+# JSON config files — static data that rarely changes
+PORTALS_JSON_PATH = BASE_DIR / 'config' / 'portals.json'
+AGENCIES_JSON_PATH = BASE_DIR / 'config' / 'agencies.json'
+INDEX_JSON_PATH = BASE_DIR / 'config' / 'index.json'

@@ -1,6 +1,4 @@
 """
-GovAlert config package — load Celery on Django startup.
+GovAlert config package.
+Phase 1: No Celery. APScheduler handles scheduled tasks.
 """
-from .celery import app as celery_app
-
-__all__ = ('celery_app',)

@@ -9,5 +9,3 @@ pytest-mock==3.14.0
 factory-boy==3.3.0
 responses==0.25.3
 Faker==25.9.2
-django-extensions==3.2.3
-ipython==8.25.0
