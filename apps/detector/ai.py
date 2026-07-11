@@ -11,6 +11,10 @@ def classify_recruitment_with_ai(agency_name: str, url: str, content: str) -> di
     Call Gemini Flash API to classify the recruitment change text.
     Returns: structured dict with classification status.
     """
+    from apps.monitor.parser import clean_html_to_text
+    if '<' in content and '>' in content:
+        content = clean_html_to_text(content)
+
     api_key = getattr(settings, 'GEMINI_API_KEY', '')
     if not api_key or api_key == 'your-gemini-api-key':
         logger.warning("GEMINI_API_KEY not configured or using default placeholder. Falling back to rule-based classification.")
@@ -67,7 +71,9 @@ def classify_recruitment_with_ai(agency_name: str, url: str, content: str) -> di
 
 def get_fallback_ai_response(agency_name: str, url: str, content: str) -> dict:
     """Fallback classifier if Gemini is down or key is missing."""
-    from apps.monitor.parser import match_recruitment_keywords
+    from apps.monitor.parser import match_recruitment_keywords, clean_html_to_text
+    if '<' in content and '>' in content:
+        content = clean_html_to_text(content)
     res = match_recruitment_keywords(content)
 
     classification = 'UNCERTAIN'

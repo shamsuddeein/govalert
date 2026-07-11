@@ -111,10 +111,10 @@ def handle_agencies(message: dict):
     from apps.notifications.sender import send_message
     chat_id = message['chat']['id']
     agencies = Agency.objects.filter(is_active=True).prefetch_related('portals')
-    lines = [f"<b>📋 Monitored Agencies ({agencies.count()})</b>\n"]
+    lines = [f"<b>Monitored Agencies ({agencies.count()})</b>\n"]
     for agency in agencies:
-        status = "🟢" if any(p.status == 'UP' for p in agency.portals.all()) else "🔴"
-        lines.append(f"{status} <b>{agency.acronym}</b> — {agency.name}")
+        status = "[Online]" if any(p.status == 'UP' for p in agency.portals.all()) else "[Offline]"
+        lines.append(f"{status} <b>{agency.acronym}</b> - {agency.name}")
     send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
 
 
@@ -123,14 +123,15 @@ def handle_jobs(message: dict):
     from apps.notifications.sender import send_message
     from apps.bot.templates import format_alert_brief
     chat_id = message['chat']['id']
-    alerts = Alert.objects.filter(status=AlertStatus.APPROVED).order_by('-created_at')[:10]
+    alerts = Alert.objects.filter(status=AlertStatus.APPROVED, agency__is_active=True).order_by('-updated_at')[:10]
     if not alerts:
-        send_message(chat_id=chat_id, text="📭 No job alerts found yet. Check back soon!")
+        send_message(chat_id=chat_id, text="No job alerts found yet. Check back soon!")
         return
-    lines = ["<b>🔔 Latest 10 Job Alerts</b>\n"]
-    for alert in alerts:
-        lines.append(format_alert_brief(alert))
-    send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
+    
+    formatted_alerts = [format_alert_brief(alert) for alert in alerts]
+    divider = "\n\n"
+    text = "<b>Latest Jobs</b>\n\n" + divider.join(formatted_alerts)
+    send_message(chat_id=chat_id, text=text, parse_mode='HTML')
 
 
 def handle_history(message: dict):
@@ -144,26 +145,43 @@ def handle_history(message: dict):
         user=user, status=NotificationStatus.SENT
     ).select_related('alert__agency').order_by('-sent_at')[:20]
     if not notifs:
-        send_message(chat_id=chat_id, text="📭 No alerts in your history yet.")
+        send_message(chat_id=chat_id, text="No alerts in your history yet.")
         return
-    lines = [f"<b>📜 Your Last {notifs.count()} Alerts</b>\n"]
+    lines = [f"<b>Your Last {notifs.count()} Alerts</b>\n"]
     for n in notifs:
-        lines.append(f"• [{n.alert.agency.acronym}] {n.alert.title} — {n.sent_at.strftime('%d %b %Y')}")
+        lines.append(f"- [{n.alert.agency.acronym}] {n.alert.title} - {n.sent_at.strftime('%d %b %Y')}")
     send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
 
 
 def handle_status(message: dict):
     from apps.agencies.models import Portal, PortalStatus
     from apps.notifications.sender import send_message
+    from django.db.models import Avg
     chat_id = message['chat']['id']
-    total = Portal.objects.filter(is_active=True).count()
-    up = Portal.objects.filter(is_active=True, status=PortalStatus.UP).count()
-    down = Portal.objects.filter(is_active=True, status=PortalStatus.DOWN).count()
+    
+    portals = Portal.objects.filter(is_active=True)
+    total = portals.count()
+    
+    online = portals.filter(status__in=[PortalStatus.ONLINE, PortalStatus.UP]).count()
+    offline = portals.filter(status__in=[PortalStatus.OFFLINE, PortalStatus.DOWN]).count()
+    blocked = portals.filter(status=PortalStatus.BLOCKED).count()
+    captcha = portals.filter(status=PortalStatus.CAPTCHA).count()
+    rate_limited = portals.filter(status=PortalStatus.RATE_LIMITED).count()
+    maintenance = portals.filter(status=PortalStatus.MAINTENANCE).count()
+    unknown = portals.filter(status=PortalStatus.UNKNOWN).count()
+    
+    avg_res = portals.filter(response_time_ms__isnull=False).aggregate(Avg('response_time_ms'))['response_time_ms__avg']
+    avg_res_text = f"{int(avg_res)} ms" if avg_res is not None else "0 ms"
+    
     text = (
-        f"<b>📡 Portal Health Status</b>\n\n"
-        f"✅ Online: <b>{up}</b>\n"
-        f"❌ Offline: <b>{down}</b>\n"
-        f"📋 Total Monitored: <b>{total}</b>"
+        f"<b>Portal Health Status</b>\n\n"
+        f"Online: <b>{online}</b>\n"
+        f"Offline: <b>{offline}</b>\n"
+        f"Rate Limited: <b>{rate_limited}</b>\n"
+        f"Maintenance: <b>{maintenance}</b>\n"
+        f"Unknown: <b>{unknown}</b>\n\n"
+        f"Average response: <b>{avg_res_text}</b>\n"
+        f"Total Monitored: <b>{total}</b>"
     )
     send_message(chat_id=chat_id, text=text, parse_mode='HTML')
 
@@ -174,10 +192,10 @@ def handle_settings(message: dict):
     user, _ = _get_or_create_user(message)
     chat_id = message['chat']['id']
     text = (
-        f"⚙️ <b>Settings</b>\n\n"
-        f"🌍 Timezone: <code>{user.timezone}</code>\n"
-        f"🔔 Alerts: {'Enabled' if user.receive_alerts else 'Disabled'}\n"
-        f"💬 Language: {user.language.upper()}"
+        f"<b>Settings</b>\n\n"
+        f"Timezone: <code>{user.timezone}</code>\n"
+        f"Alerts: {'Enabled' if user.receive_alerts else 'Disabled'}\n"
+        f"Language: {user.language.upper()}"
     )
     send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=get_settings_keyboard())
 
@@ -188,22 +206,24 @@ def handle_search(message: dict):
     # Extract keyword after /search command
     parts = message.get('text', '').split(maxsplit=1)
     if len(parts) < 2:
-        send_message(chat_id=chat_id, text="🔍 Usage: /search <keyword>\nExample: /search customs")
+        send_message(chat_id=chat_id, text="Usage: /search <keyword>\nExample: /search customs")
         return
     keyword = parts[1].strip()[:200]
     from apps.alerts.models import Alert, AlertStatus
     from apps.bot.templates import format_alert_brief
     results = Alert.objects.filter(
         status=AlertStatus.APPROVED,
+        agency__is_active=True,
         title__icontains=keyword
-    ).order_by('-created_at')[:10]
+    ).order_by('-updated_at')[:10]
     if not results:
-        send_message(chat_id=chat_id, text=f"🔍 No results for <b>{keyword}</b>", parse_mode='HTML')
+        send_message(chat_id=chat_id, text=f"No results for <b>{keyword}</b>", parse_mode='HTML')
         return
-    lines = [f"🔍 <b>Results for '{keyword}'</b>\n"]
-    for alert in results:
-        lines.append(format_alert_brief(alert))
-    send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
+    
+    formatted_alerts = [format_alert_brief(alert) for alert in results]
+    divider = "\n\n"
+    text = f"<b>Results for '{keyword}'</b>\n\n" + divider.join(formatted_alerts)
+    send_message(chat_id=chat_id, text=text, parse_mode='HTML')
 
 
 def handle_latest(message: dict):
@@ -214,7 +234,7 @@ def handle_latest(message: dict):
     chat_id = message['chat']['id']
     alert = Alert.objects.filter(status=AlertStatus.APPROVED).order_by('-created_at').first()
     if not alert:
-        send_message(chat_id=chat_id, text="📭 No alerts yet.")
+        send_message(chat_id=chat_id, text="No alerts yet.")
         return
     send_message(
         chat_id=chat_id,
@@ -229,6 +249,6 @@ def handle_report(message: dict):
     chat_id = message['chat']['id']
     send_message(
         chat_id=chat_id,
-        text="⚠️ To report a fake alert, tap the <b>[Report Fake]</b> button directly on the alert message.",
+        text="To report a fake alert, tap the <b>[Report Fake]</b> button directly on the alert message.",
         parse_mode='HTML',
     )

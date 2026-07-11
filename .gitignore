@@ -32,6 +32,8 @@ coverage.xml
 # Database
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
 
 # IDE
 .idea/

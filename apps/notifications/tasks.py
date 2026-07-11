@@ -82,10 +82,15 @@ def dispatch_alert(alert_id: int):
         logger.info(f"No active subscribers for agency {alert.agency.acronym}. Dispatch skipped.")
         return
 
-    logger.info(f"Found {len(users)} subscribers for alert {alert_id}.")
-
     text = format_alert_full(alert)
     keyboard = get_alert_keyboard(alert.id)
+
+    # Post to public alert channel
+    try:
+        from storage.events import post_public_alert
+        post_public_alert(text)
+    except Exception as exc:
+        logger.warning(f"Failed to post to public alert channel: {exc}")
 
     success_count = 0
     failure_count = 0

@@ -133,13 +133,45 @@ class AdminStatsView(APIView):
 
     def get(self, request):
         from apps.accounts.models import TelegramUser
-        from apps.alerts.models import Alert
+        from apps.alerts.models import Alert, DecisionLog
         from apps.agencies.models import Agency
+        from apps.monitor.models import Snapshot
+        from apps.notifications.models import Notification, NotificationStatus
+        from django.db.models import Avg
+        from django.utils import timezone
+        from django.core.cache import cache
+
+        today = timezone.now().date()
+
+        total_scrapes = Snapshot.objects.count()
+        successful_scrapes = Snapshot.objects.filter(status_code__lt=400).count()
+        failed_scrapes = Snapshot.objects.filter(status_code__gte=400).count()
+        avg_scrape_duration = Snapshot.objects.filter(response_time_ms__isnull=False).aggregate(Avg('response_time_ms'))['response_time_ms__avg']
+
+        alerts_today = Alert.objects.filter(created_at__date=today).count()
+        notifications_today = Notification.objects.filter(status=NotificationStatus.SENT, sent_at__date=today).count()
+        queue_length = Notification.objects.filter(status=NotificationStatus.QUEUED).count()
+
+        ai_decisions = DecisionLog.objects.filter(reason__icontains="Gemini AI").count()
+        rule_decisions = DecisionLog.objects.filter(reason__icontains="Rule Engine Fallback").count()
+
+        duplicate_skipped = cache.get('metrics_duplicate_events_skipped', 0)
+
         return Response({
             'total_users': TelegramUser.objects.count(),
             'active_users': TelegramUser.objects.filter(state='ACTIVE').count(),
             'total_agencies': Agency.objects.filter(is_active=True).count(),
             'total_alerts': Alert.objects.count(),
+            'total_scrapes': total_scrapes,
+            'successful_scrapes': successful_scrapes,
+            'failed_scrapes': failed_scrapes,
+            'alerts_generated_today': alerts_today,
+            'notifications_sent_today': notifications_today,
+            'duplicate_events_skipped': duplicate_skipped,
+            'ai_decisions_made': ai_decisions,
+            'rule_engine_decisions_made': rule_decisions,
+            'average_scrape_duration_ms': int(avg_scrape_duration) if avg_scrape_duration is not None else 0,
+            'queue_length': queue_length,
         })
 
 
@@ -150,6 +182,13 @@ class HealthView(APIView):
     def get(self, request):
         from django.db import connection
         from django.conf import settings
+        from django.utils import timezone
+        from django.db.models import Avg
+        from django.core.cache import cache
+        from apps.monitor.models import Snapshot
+        from apps.alerts.models import Alert, DecisionLog
+        from apps.notifications.models import Notification, NotificationStatus
+        
         data = {'status': 'ok'}
 
         # Database check
@@ -187,5 +226,23 @@ class HealthView(APIView):
             data['scrapers'] = Portal.objects.filter(is_active=True).count()
         except Exception:
             data['scrapers'] = 0
+
+        # Production Metrics
+        try:
+            today = timezone.now().date()
+            data['production_metrics'] = {
+                'total_scrapes': Snapshot.objects.count(),
+                'successful_scrapes': Snapshot.objects.filter(status_code__lt=400).count(),
+                'failed_scrapes': Snapshot.objects.filter(status_code__gte=400).count(),
+                'alerts_generated_today': Alert.objects.filter(created_at__date=today).count(),
+                'notifications_sent_today': Notification.objects.filter(status=NotificationStatus.SENT, sent_at__date=today).count(),
+                'duplicate_events_skipped': cache.get('metrics_duplicate_events_skipped', 0),
+                'ai_decisions_made': DecisionLog.objects.filter(reason__icontains="Gemini AI").count(),
+                'rule_engine_decisions_made': DecisionLog.objects.filter(reason__icontains="Rule Engine Fallback").count(),
+                'average_scrape_duration_ms': int(Snapshot.objects.filter(response_time_ms__isnull=False).aggregate(Avg('response_time_ms'))['response_time_ms__avg'] or 0),
+                'queue_length': Notification.objects.filter(status=NotificationStatus.QUEUED).count(),
+            }
+        except Exception as e:
+            data['production_metrics'] = {'error': str(e)}
 
         return Response(data)

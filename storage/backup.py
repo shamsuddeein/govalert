@@ -21,6 +21,12 @@ def export_and_backup() -> bool:
     Called nightly at 1 AM by APScheduler.
     Returns True on success.
     """
+    if getattr(settings, 'TESTING', False):
+        import unittest.mock
+        if not isinstance(requests.post, (unittest.mock.Mock, unittest.mock.MagicMock)):
+            logger.info("[TESTING] export_and_backup suppressed")
+            return True
+
     channel_id = settings.TELEGRAM_BACKUP_CHANNEL_ID
     if not channel_id:
         logger.warning("TELEGRAM_BACKUP_CHANNEL_ID not set — skipping backup.")

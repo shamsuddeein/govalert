@@ -27,7 +27,12 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     """
     agency = portal.agency
 
+    from apps.monitor.parser import clean_html_to_text
+    if '<' in content and '>' in content:
+        content = clean_html_to_text(content)
+
     # 1. Run AI classification
+    is_fallback = False
     try:
         ai_res = classify_recruitment_with_ai(agency.name, portal.url, content)
         if not ai_res:
@@ -60,6 +65,7 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
                 'requirements': "Check website"
             }
         }
+        is_fallback = True
 
     # 2. Calculate trust score
     ai_confidence = ai_res.get('confidence', 70)
@@ -101,6 +107,16 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         
         if not is_update:
             logger.info(f"Duplicate recruitment ignored (fingerprint={fingerprint[:8]}...).")
+            from django.core.cache import cache
+            try:
+                # Use a default 0 if key not set
+                current_skipped = cache.get('metrics_duplicate_events_skipped')
+                if current_skipped is None:
+                    cache.set('metrics_duplicate_events_skipped', 1, timeout=None)
+                else:
+                    cache.incr('metrics_duplicate_events_skipped')
+            except Exception as e:
+                logger.warning(f"Failed to increment duplicate counter: {e}")
             return None
         
         # It's an update - update the existing event and create an alert for the changes
@@ -120,7 +136,7 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         # New recruitment
         logger.info(f"New recruitment detected (fingerprint={fingerprint[:8]}...).")
         event_status = EventStatus.NEW
-
+ 
         # 7. Create RecruitmentEvent with fingerprint (atomic transaction for race condition safety)
         event_suffix = uuid.uuid4().hex[:6]
         event_id = f"evt_{timezone.now().strftime('%Y%m%d')}_{event_suffix}"
@@ -143,7 +159,7 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         except IntegrityError as e:
             logger.warning(f"IntegrityError creating event (race condition?): {e}. Event already exists.")
             return None
-
+ 
     # 8. Create or update DecisionLog
     rule_matches = matched_data.get('rule_matches', [])
     if not rule_matches:
@@ -155,13 +171,14 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         if 'careers' in content_lower:
             rule_matches.append('careers_keyword')
 
+    decision_source = 'Rule Engine Fallback' if is_fallback else 'Gemini AI'
     DecisionLog.objects.update_or_create(
         event=rec_event,
         defaults={
             'rule_matches': rule_matches,
             'gemini_score': float(ai_confidence / 100.0),
             'final_trust': trust_score,
-            'reason': f"Classification: {ai_res.get('classification') or 'UNCERTAIN'}. Trust score matches calculated metrics.",
+            'reason': f"{decision_source}: Classification: {ai_res.get('classification') or 'UNCERTAIN'}. Trust score matches calculated metrics.",
             'title': title,
             'deadline': deadline,
             'positions': positions,
@@ -169,31 +186,54 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         }
     )
 
-    # 9. Create Alert (only if event was newly created, not if it's a duplicate)
+    # 9. Create or update Alert
     requirements = extracted.get('requirements') or "Check website"
 
-    alert = Alert.objects.create(
+    alert, alert_created = Alert.objects.update_or_create(
         recruitment_event=rec_event,
-        agency=agency,
-        portal=portal,
-        event_type=ai_res.get('event_type') or 'RECRUITMENT_OPEN',
-        title=title,
-        positions=positions,
-        deadline=deadline,
-        requirements=requirements,
-        source_url=portal.url,
-        content_excerpt=content[:2000],
-        trust_score=trust_score,
-        ai_classification=ai_res.get('classification') or 'UNCERTAIN',
-        ai_confidence=ai_confidence,
-        ai_red_flags=ai_res.get('red_flags') or [],
-        status=alert_status
+        defaults={
+            'agency': agency,
+            'portal': portal,
+            'event_type': ai_res.get('event_type') or 'RECRUITMENT_OPEN',
+            'title': title,
+            'positions': positions,
+            'deadline': deadline,
+            'requirements': requirements,
+            'source_url': portal.url,
+            'content_excerpt': content[:2000],
+            'trust_score': trust_score,
+            'ai_classification': ai_res.get('classification') or 'UNCERTAIN',
+            'ai_confidence': ai_confidence,
+            'ai_red_flags': ai_res.get('red_flags') or [],
+            'status': alert_status,
+        }
     )
 
-    logger.info(f"Created event {rec_event.event_id} (status={rec_event.status}) and alert {alert.id} (trust={alert.trust_score})")
+    logger.info(f"Processed event {rec_event.event_id} (status={rec_event.status}) and alert {alert.id} (created={alert_created})")
+
+    # Post event JSON to event channel
+    try:
+        from storage.events import write_event
+        write_event(
+            event_id=rec_event.event_id,
+            event=rec_event.event_type,
+            agency=agency.name,
+            acronym=agency.acronym,
+            category=agency.category,
+            title=title,
+            url=portal.url,
+            trust_score=trust_score,
+            deadline=deadline,
+            positions=positions,
+            content_hash=rec_event.content_hash,
+            fingerprint=fingerprint,
+            changes=changes_dict
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to post to event channel: {exc}")
 
     # 10. Send notifications only for NEW events (not updates)
-    if alert.status == AlertStatus.APPROVED and rec_event.status == EventStatus.NEW:
+    if alert.status == AlertStatus.APPROVED and rec_event.status == EventStatus.NEW and alert_created:
         dispatch_alert(alert.id)
     elif rec_event.status == EventStatus.UPDATED:
         logger.info(f"Recruitment updated (alert {alert.id}). Update notifications optional.")

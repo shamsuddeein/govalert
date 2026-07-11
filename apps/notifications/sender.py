@@ -32,6 +32,12 @@ def send_message(
     Returns the API response dict on success, None on failure.
     Raises TelegramDeliveryException if user has blocked the bot.
     """
+    if getattr(settings, 'TESTING', False):
+        import unittest.mock
+        if not isinstance(requests.post, (unittest.mock.Mock, unittest.mock.MagicMock)):
+            logger.info(f"[TESTING] send_message suppressed for chat_id={chat_id}")
+            return {'message_id': 999999}
+
     payload = {
         'chat_id': chat_id,
         'text': text[:4096],  # Telegram message limit
@@ -67,6 +73,12 @@ def send_message(
 
 def answer_callback_query(callback_query_id: str, text: str = '') -> None:
     """Answer an inline keyboard callback query (required to clear the loading state)."""
+    if getattr(settings, 'TESTING', False):
+        import unittest.mock
+        if not isinstance(requests.post, (unittest.mock.Mock, unittest.mock.MagicMock)):
+            logger.info("[TESTING] answer_callback_query suppressed")
+            return
+
     try:
         requests.post(
             f"{_get_base_url()}/answerCallbackQuery",

@@ -5,8 +5,8 @@
     "last_check": ""
   },
   "backup_channel": {
-    "last_backup_id": 0,
-    "last_backup": ""
+    "last_backup_id": 6,
+    "last_backup": "2026-07-11T22:57:26Z"
   },
   "total_events_processed": 0
 }

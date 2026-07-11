@@ -4,87 +4,82 @@ Keeps message text out of handler logic for easy editing/translation.
 """
 
 WELCOME_MESSAGE = """
-🇳🇬 <b>Welcome to GovAlert, {name}!</b>
+<b>Welcome to GovAlert, {name}.</b>
 
-I'll alert you the moment any Nigerian government agency opens a new recruitment portal.
+This service will notify you as soon as any Nigerian government agency opens a new recruitment portal.
 
-You're now subscribed to <b>30+ agencies</b> including:
-• NNPC, NCS, EFCC, CBN, FIRS
-• NPF, NSCDC, DSS, NIS, NAF
-• NAFDAC, JAMB, FAAN, NCAA, and more
+You are subscribed to receive alerts for over 30 agencies, including:
+- NNPC, NCS, EFCC, CBN, FIRS
+- NPF, NSCDC, DSS, NIS, NAF
+- NAFDAC, JAMB, FAAN, NCAA, and more
 
-<b>No fake alerts.</b> Every opening is verified with our trust scoring system + AI.
+All openings are verified directly against official sources.
 
 <b>Commands:</b>
-/jobs — Latest openings
-/agencies — All monitored agencies
-/history — Your alert history
-/search — Search by keyword
-/status — Portal health status
-/settings — Your preferences
-/help — Full command list
+/jobs - Latest openings
+/agencies - All monitored agencies
+/history - Your alert history
+/search - Search by keyword
+/status - Portal health status
+/settings - Your preferences
+/help - Full command list
 """
 
 RETURNING_MESSAGE = """
-🇳🇬 <b>Welcome back to GovAlert, {name}!</b>
+<b>Welcome back to GovAlert, {name}.</b>
 
-Your subscriptions are active. You will receive alerts as soon as new job postings are detected.
+Your subscriptions are active. You will receive notifications as soon as new job postings are detected.
 
 <b>Quick Commands:</b>
-/jobs — View latest jobs
-/status — Check portal statuses
-/settings — Manage your preferences
+/jobs - View latest jobs
+/status - Check portal statuses
+/settings - Manage your preferences
 """
 
 CONSENT_MESSAGE = """
-🔒 <b>Data Privacy Notice</b>
+<b>Data Privacy Notice</b>
 
-Before you start, GovAlert needs to store a small amount of data to function:
+To provide this service, GovAlert stores the following information:
+- Your Telegram ID and name
+- Your subscription preferences
 
-• Your Telegram ID and name
-• Your subscription preferences
+This is handled in accordance with the Nigeria Data Protection Regulation (NDPR).
 
-This is in line with Nigeria's NDPR data protection law.
+Your data will not be shared with third parties. You can delete your profile and subscriptions at any time using the /delete command.
 
-We will <b>never</b> share your data with third parties.
-You can delete your data at any time with /delete.
-
-Tap <b>I Agree</b> to continue.
+Select 'I Agree' to proceed.
 """
 
 HELP_MESSAGE = """
-📖 <b>GovAlert — Command List</b>
+<b>GovAlert - Command List</b>
 
-/start — Register and subscribe to all agencies
-/jobs — Latest 10 job openings
-/latest — Most recent alert
-/agencies — All monitored agencies + portal status
-/history — Your last 20 received alerts
-/search [keyword] — Search alerts by keyword
-/status — Portal health summary
-/settings — Your notification preferences
-/unsubscribe — Stop receiving alerts
-/report — Report a suspicious alert
-/help — This message
+/start - Register and subscribe to all agencies
+/jobs - Latest 10 job openings
+/latest - Most recent alert
+/agencies - All monitored agencies and portal status
+/history - Your last 20 received alerts
+/search [keyword] - Search alerts by keyword
+/status - Portal health summary
+/settings - Your notification preferences
+/unsubscribe - Stop receiving alerts
+/report - Report a suspicious alert
+/help - Show this message
 
-<i>GovAlert monitors 30+ Nigerian government agency portals every 15 minutes.</i>
+GovAlert monitors official Nigerian government agency portals for updates.
 """
 
 UNSUBSCRIBED_MESSAGE = """
-✅ <b>You have been unsubscribed.</b>
+<b>You have been unsubscribed.</b>
 
-You will no longer receive recruitment alerts.
-
-To re-subscribe to all agencies, simply send /start again.
+You will no longer receive recruitment alerts. To re-subscribe, send the /start command.
 """
 
-ERROR_MESSAGE = "⚠️ Something went wrong. Please try again or type /help."
+ERROR_MESSAGE = "An error occurred. Please try again or type /help."
 
 PORTAL_DOWN_MESSAGE = """
-⚠️ <b>{agency_acronym} Portal Temporarily Unavailable</b>
+<b>{agency_acronym} Portal Offline</b>
 
-The {agency_name} recruitment portal appears to be offline.
-We're monitoring it and will alert you as soon as it's back.
+The recruitment portal for {agency_name} appears to be temporarily offline. We will continue monitoring and notify you once it becomes available.
 """
 
-USER_BANNED_MESSAGE = "🚫 Your account has been suspended. Contact support if you believe this is an error."
+USER_BANNED_MESSAGE = "Your account has been suspended. Please contact support."

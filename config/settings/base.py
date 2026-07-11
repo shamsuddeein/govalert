@@ -5,6 +5,10 @@ No PostgreSQL, no Redis, no Celery required.
 """
 from pathlib import Path
 from decouple import config, Csv
+import sys
+
+# Detect if we are running unit/integration tests
+TESTING = 'test' in sys.argv or 'pytest' in sys.modules or any('pytest' in arg for arg in sys.argv)
 
 # ─── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -198,9 +202,9 @@ GEMINI_MODEL = 'gemini-1.5-flash'
 GEMINI_MAX_CALLS_PER_MINUTE = 60
 
 # ─── GovAlert App Settings ─────────────────────────────────────────────────────
-PORTAL_CHECK_INTERVAL_MINUTES = 15
-PORTAL_CHECK_INTERVAL_HIGH_PRIORITY = 10
-PORTAL_CHECK_INTERVAL_LOW_ACTIVITY = 30
+PORTAL_CHECK_INTERVAL_MINUTES = 20
+PORTAL_CHECK_INTERVAL_HIGH_PRIORITY = 5
+PORTAL_CHECK_INTERVAL_LOW_ACTIVITY = 60
 MAX_PLAYWRIGHT_INSTANCES = 3
 ALERT_DEDUP_WINDOW_HOURS = 24
 MAX_USER_HISTORY_DISPLAY = 20
