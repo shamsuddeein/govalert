@@ -62,3 +62,16 @@ def test_admin_broadcast_api(mock_send):
     assert response.data['status'] == 'broadcast_sent'
     assert response.data['recipients_count'] == 1
     mock_send.assert_called_once_with(chat_id=123, text='Hello All!')
+
+
+@pytest.mark.django_db
+def test_health_api():
+    client = APIClient()
+    url = reverse('api:health')
+    response = client.get(url)
+    assert response.status_code == 200
+    assert response.data['status'] in ['ok', 'degraded']
+    assert 'database' in response.data
+    assert 'telegram' in response.data
+    assert 'scheduler' in response.data
+    assert 'scrapers' in response.data
