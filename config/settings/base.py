@@ -14,7 +14,7 @@ TESTING = 'test' in sys.argv or 'pytest' in sys.modules or any('pytest' in arg f
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # ─── Security ──────────────────────────────────────────────────────────────────
-SECRET_KEY = config('SECRET_KEY')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key-for-collectstatic')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 
