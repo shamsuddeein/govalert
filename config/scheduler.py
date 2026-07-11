@@ -18,7 +18,14 @@ def get_scheduler() -> BackgroundScheduler:
     """Return the singleton scheduler instance."""
     global _scheduler
     if _scheduler is None:
-        _scheduler = BackgroundScheduler(timezone='Africa/Lagos')
+        from apscheduler.executors.pool import ThreadPoolExecutor
+        executors = {
+            'default': ThreadPoolExecutor(10),
+            'high': ThreadPoolExecutor(10),
+            'medium': ThreadPoolExecutor(5),
+            'low': ThreadPoolExecutor(2),
+        }
+        _scheduler = BackgroundScheduler(executors=executors, timezone='Africa/Lagos')
         _scheduler.add_jobstore(DjangoJobStore(), 'default')
     return _scheduler
 
@@ -36,7 +43,7 @@ def start():
         logger.info("Scheduler already running — skipping start.")
         return
 
-    # ── Portal monitoring jobs ─────────────────────────────────────────────────
+    # ── Portal monitoring jobs (HIGH priority) ──────────────────────────────────
     # High-priority agencies: every 10 minutes
     scheduler.add_job(
         'apps.monitor.tasks:check_high_priority_portals',
@@ -44,6 +51,7 @@ def start():
         id='check_high_priority_portals',
         replace_existing=True,
         misfire_grace_time=60,
+        executor='high',
     )
 
     # Standard portals: every 15 minutes
@@ -53,6 +61,7 @@ def start():
         id='check_standard_portals',
         replace_existing=True,
         misfire_grace_time=60,
+        executor='high',
     )
 
     # Low-activity portals: every 30 minutes
@@ -62,9 +71,20 @@ def start():
         id='check_low_activity_portals',
         replace_existing=True,
         misfire_grace_time=120,
+        executor='high',
     )
 
-    # ── Maintenance jobs ───────────────────────────────────────────────────────
+    # ── Verification and Retries (MEDIUM priority) ──────────────────────────────
+    # Retry failed notifications every hour
+    scheduler.add_job(
+        'apps.notifications.tasks:retry_failed_notifications',
+        trigger=IntervalTrigger(hours=1),
+        id='retry_failed_notifications',
+        replace_existing=True,
+        executor='medium',
+    )
+
+    # ── Cleanup and Maintenance (LOW priority) ──────────────────────────────────
     # Nightly DB backup to Telegram at 1 AM
     scheduler.add_job(
         'apps.monitor.tasks:nightly_backup',
@@ -73,6 +93,7 @@ def start():
         id='nightly_backup',
         replace_existing=True,
         timezone='Africa/Lagos',
+        executor='low',
     )
 
     # Daily health report at 8 AM
@@ -83,6 +104,7 @@ def start():
         id='daily_health_report',
         replace_existing=True,
         timezone='Africa/Lagos',
+        executor='low',
     )
 
     # Mark inactive users every 24 hours
@@ -91,14 +113,7 @@ def start():
         trigger=IntervalTrigger(hours=24),
         id='cleanup_inactive_users',
         replace_existing=True,
-    )
-
-    # Retry failed notifications every hour
-    scheduler.add_job(
-        'apps.notifications.tasks:retry_failed_notifications',
-        trigger=IntervalTrigger(hours=1),
-        id='retry_failed_notifications',
-        replace_existing=True,
+        executor='low',
     )
 
     scheduler.start()

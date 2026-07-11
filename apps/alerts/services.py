@@ -58,15 +58,55 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     else:
         status = AlertStatus.PENDING
 
+    import uuid
+    from django.utils import timezone
+    from apps.alerts.models import RecruitmentEvent, DecisionLog
+
+    # Generate unique event ID
+    event_suffix = uuid.uuid4().hex[:6]
+    event_id = f"evt_{timezone.now().strftime('%Y%m%d')}_{event_suffix}"
+
+    # 1. Create RecruitmentEvent
+    from core.utils import compute_content_hash
+    content_hash = compute_content_hash(content)
+    event_type = ai_res.get('event_type') or 'RECRUITMENT_OPEN'
+    rec_event = RecruitmentEvent.objects.create(
+        event_id=event_id,
+        portal=portal,
+        event_type=event_type,
+        content_hash=content_hash
+    )
+
+    # 2. Create DecisionLog
+    rule_matches = matched_data.get('rule_matches', [])
+    if not rule_matches:
+        # Infer matches based on presence of keywords
+        content_lower = content.lower()
+        if 'apply' in content_lower:
+            rule_matches.append('apply_keyword')
+        if 'recruitment' in content_lower:
+            rule_matches.append('recruitment_keyword')
+        if 'careers' in content_lower:
+            rule_matches.append('careers_keyword')
+
+    DecisionLog.objects.create(
+        event=rec_event,
+        rule_matches=rule_matches,
+        gemini_score=float(ai_confidence / 100.0),
+        final_trust=trust_score,
+        reason=f"Classification: {ai_res.get('classification') or 'UNCERTAIN'}. Trust score matches calculated metrics."
+    )
+
     extracted = ai_res.get('extracted', {})
     positions = extracted.get('positions') or matched_data.get('positions') or "Multiple Positions"
     deadline = extracted.get('deadline') or matched_data.get('deadline') or ""
     requirements = extracted.get('requirements') or "Check website"
 
     alert = Alert.objects.create(
+        recruitment_event=rec_event,
         agency=agency,
         portal=portal,
-        event_type=ai_res.get('event_type') or 'RECRUITMENT_OPEN',
+        event_type=event_type,
         title=f"{agency.acronym} Recruitment Update Detected",
         positions=positions,
         deadline=deadline,
@@ -80,7 +120,7 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         status=status
     )
 
-    logger.info(f"Created alert {alert.id} status={alert.status} trust={alert.trust_score}")
+    logger.info(f"Created event {rec_event.event_id} and alert {alert.id} status={alert.status} trust={alert.trust_score}")
 
     if alert.status == AlertStatus.APPROVED:
         dispatch_alert(alert.id)

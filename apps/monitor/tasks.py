@@ -26,8 +26,11 @@ def portal_check(portal_id: int):
 
     logger.info(f"Checking portal: {portal.name} ({portal.url}) using {portal.scrape_method}...")
 
+    from core.plugins import get_scraper_backend
+
     try:
-        content, status_code, response_time_ms = scrape_portal(portal.url, portal.scrape_method)
+        scraper = get_scraper_backend(portal.scrape_method)
+        content, status_code, response_time_ms = scraper.scrape(portal.url)
         success = True
     except ScraperException as e:
         logger.warning(f"Scraper failed for {portal.url}: {e}")
@@ -39,10 +42,19 @@ def portal_check(portal_id: int):
     portal.last_checked_at = timezone.now()
     if success:
         portal.last_successful_check_at = timezone.now()
-        portal.status = PortalStatus.UP
+        if status_code in [403, 401]:
+            portal.status = PortalStatus.BLOCKED
+        elif status_code == 429:
+            portal.status = PortalStatus.RATE_LIMITED
+        elif status_code == 503:
+            portal.status = PortalStatus.MAINTENANCE
+        elif "captcha" in content.lower():
+            portal.status = PortalStatus.CAPTCHA
+        else:
+            portal.status = PortalStatus.ONLINE
         portal.consecutive_failures = 0
     else:
-        portal.status = PortalStatus.DOWN
+        portal.status = PortalStatus.OFFLINE
         portal.consecutive_failures += 1
     portal.save()
 

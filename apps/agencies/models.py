@@ -25,10 +25,17 @@ class ScrapeMethod(models.TextChoices):
 
 
 class PortalStatus(models.TextChoices):
-    UP = 'UP', 'Up'
-    DOWN = 'DOWN', 'Down'
+    ONLINE = 'ONLINE', 'Online / Up'
+    OFFLINE = 'OFFLINE', 'Offline'
+    BLOCKED = 'BLOCKED', 'Blocked by Firewall/Cloudflare'
+    CAPTCHA = 'CAPTCHA', 'Captcha Challenge Detected'
+    MAINTENANCE = 'MAINTENANCE', 'Under Maintenance'
+    CHANGED_LAYOUT = 'CHANGED_LAYOUT', 'Changed Layout'
+    RATE_LIMITED = 'RATE_LIMITED', 'Rate Limited'
     UNKNOWN = 'UNKNOWN', 'Unknown'
-    PAUSED = 'PAUSED', 'Paused (maintenance)'
+    UP = 'UP', 'Up (Deprecated)'
+    DOWN = 'DOWN', 'Down (Deprecated)'
+    PAUSED = 'PAUSED', 'Paused (Deprecated)'
 
 
 class Agency(models.Model):
@@ -127,7 +134,7 @@ class Portal(models.Model):
         help_text="Set to False to pause monitoring without deleting."
     )
     status = models.CharField(
-        max_length=10,
+        max_length=30,
         choices=PortalStatus.choices,
         default=PortalStatus.UNKNOWN,
         db_index=True,
@@ -169,9 +176,9 @@ class Portal(models.Model):
 
     @property
     def is_up(self) -> bool:
-        return self.status == PortalStatus.UP
+        return self.status in [PortalStatus.ONLINE, PortalStatus.UP]
 
     @property
     def needs_check(self) -> bool:
         """True if this portal is active and eligible for a new check."""
-        return self.is_active and self.status != PortalStatus.PAUSED
+        return self.is_active and self.status not in [PortalStatus.MAINTENANCE, PortalStatus.PAUSED]

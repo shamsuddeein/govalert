@@ -25,11 +25,82 @@ class AlertStatus(models.TextChoices):
     HELD = 'HELD', 'Held for Admin Review'
 
 
+class RecruitmentEvent(models.Model):
+    """
+    Represents a raw change/recruitment event detected by the monitor.
+    Separated from user-facing Alerts to allow auditing and multi-channel notifications.
+    """
+    event_id = models.CharField(
+        max_length=50, unique=True,
+        help_text="Unique event code, e.g. evt_20260711_000412"
+    )
+    portal = models.ForeignKey(
+        'agencies.Portal',
+        on_delete=models.CASCADE,
+        related_name='events'
+    )
+    event_type = models.CharField(
+        max_length=30,
+        choices=EventType.choices,
+        default=EventType.RECRUITMENT_OPEN
+    )
+    content_hash = models.CharField(max_length=64, blank=True, default='')
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'recruitment_events'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.event_id} — {self.event_type} — {self.portal.agency.acronym}"
+
+
+class DecisionLog(models.Model):
+    """
+    Audit log detailing why a recruitment event was classified the way it was.
+    """
+    event = models.OneToOneField(
+        RecruitmentEvent,
+        on_delete=models.CASCADE,
+        related_name='decision_log'
+    )
+    rule_matches = models.JSONField(
+        default=list, blank=True,
+        help_text="List of rules matched during classification."
+    )
+    gemini_score = models.FloatField(
+        default=0.0,
+        help_text="Gemini confidence score (0.0 to 1.0)"
+    )
+    final_trust = models.IntegerField(
+        default=0,
+        help_text="Calculated trust score (0 to 100)"
+    )
+    reason = models.TextField(
+        blank=True, default='',
+        help_text="Human readable summary of the decision."
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'decision_logs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Decision for {self.event.event_id} — Trust: {self.final_trust}"
+
+
 class Alert(models.Model):
     """
     A single detected recruitment event. Created by the detection engine.
     May be held for admin review if trust score is low.
     """
+    recruitment_event = models.ForeignKey(
+        RecruitmentEvent,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='alerts'
+    )
     agency = models.ForeignKey(
         'agencies.Agency',
         on_delete=models.CASCADE,
