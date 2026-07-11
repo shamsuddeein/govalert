@@ -36,9 +36,9 @@ def export_and_backup() -> bool:
             'exported_at': datetime.now(timezone.utc).isoformat(),
             'version':     '1.0',
             'users':         [dict(r) for r in conn.execute('SELECT * FROM users')],
-            'alerts':        [dict(r) for r in conn.execute('SELECT * FROM alerts_alert')],
-            'notifications': [dict(r) for r in conn.execute('SELECT * FROM notifications_notification')],
-            'fake_reports':  [dict(r) for r in conn.execute('SELECT * FROM detector_alertreport')],
+            'alerts':        [dict(r) for r in conn.execute('SELECT * FROM alerts')],
+            'notifications': [dict(r) for r in conn.execute('SELECT * FROM notifications')],
+            'fake_reports':  [dict(r) for r in conn.execute('SELECT * FROM alert_reports')],
         }
         conn.close()
 
