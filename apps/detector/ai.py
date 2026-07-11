@@ -12,8 +12,8 @@ def classify_recruitment_with_ai(agency_name: str, url: str, content: str) -> di
     Returns: structured dict with classification status.
     """
     api_key = getattr(settings, 'GEMINI_API_KEY', '')
-    if not api_key:
-        logger.warning("GEMINI_API_KEY not configured. Falling back to rule-based classification.")
+    if not api_key or api_key == 'your-gemini-api-key':
+        logger.warning("GEMINI_API_KEY not configured or using default placeholder. Falling back to rule-based classification.")
         return get_fallback_ai_response(agency_name, url, content)
 
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
