@@ -109,8 +109,23 @@ class AdminBroadcastView(APIView):
     permission_classes = [IsSuperAdmin]
 
     def post(self, request):
-        # Placeholder — full implementation in Volume 6/7
-        return Response({'status': 'broadcast_queued'})
+        text = request.data.get('text')
+        if not text:
+            return Response({'error': 'text field is required'}, status=400)
+
+        from apps.accounts.models import TelegramUser, UserState
+        from apps.notifications.sender import send_message
+
+        users = TelegramUser.objects.filter(state=UserState.ACTIVE)
+        success_count = 0
+        for user in users:
+            try:
+                send_message(chat_id=user.telegram_id, text=text)
+                success_count += 1
+            except Exception:
+                pass
+
+        return Response({'status': 'broadcast_sent', 'recipients_count': success_count})
 
 
 class AdminStatsView(APIView):

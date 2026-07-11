@@ -41,3 +41,24 @@ def test_latest_alerts_api():
     assert response.status_code == 200
     assert len(response.data) == 1
     assert response.data[0]['title'] == 'Customs Recruitment 2025'
+
+
+from unittest.mock import patch
+from django.contrib.auth.models import User
+
+@pytest.mark.django_db
+@patch('apps.notifications.sender.send_message')
+def test_admin_broadcast_api(mock_send):
+    client = APIClient()
+    user = User.objects.create_superuser(username='superadmin', password='password', email='admin@example.com')
+    client.force_authenticate(user=user)
+
+    from apps.accounts.models import TelegramUser
+    TelegramUser.objects.create(telegram_id=123, first_name="Test", state="ACTIVE")
+
+    url = reverse('api:admin_broadcast')
+    response = client.post(url, {'text': 'Hello All!'}, format='json')
+    assert response.status_code == 200
+    assert response.data['status'] == 'broadcast_sent'
+    assert response.data['recipients_count'] == 1
+    mock_send.assert_called_once_with(chat_id=123, text='Hello All!')
