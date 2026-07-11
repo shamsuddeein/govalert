@@ -60,3 +60,64 @@ def test_scrape_portal_pdf_fallback(mock_get):
     content, code, duration = scrape_portal("http://example.com/file.pdf", method="PDF")
     assert content == "Hello PDF Content fallback"
     assert code == 200
+
+
+@pytest.mark.django_db
+@patch('apps.monitor.scraper.scrape_portal')
+@patch('apps.detector.ai.classify_recruitment_with_ai')
+@patch('apps.notifications.tasks.send_message')
+def test_portal_check_pipeline(mock_send, mock_ai, mock_scrape):
+    from apps.agencies.models import Agency, Portal
+    from apps.monitor.tasks import portal_check
+    from apps.monitor.models import Snapshot
+    from apps.alerts.models import Alert
+
+    agency = Agency.objects.create(
+        name="Nigeria Customs Service",
+        acronym="NCS",
+        official_domains=["customs.gov.ng"],
+        is_active=True
+    )
+    portal = Portal.objects.create(
+        agency=agency,
+        name="Customs Portal",
+        url="https://customs.gov.ng/careers",
+        is_active=True,
+        check_interval_minutes=10
+    )
+
+    # 1. First scrape: Initial snapshot (no change, no alert)
+    mock_scrape.return_value = ("<html><body>Careers Page</body></html>", 200, 150)
+    portal_check(portal.id)
+
+    assert Snapshot.objects.filter(portal=portal).count() == 1
+    snap1 = Snapshot.objects.first()
+    assert snap1.has_change is False
+    assert Alert.objects.count() == 0
+
+    # 2. Second scrape: Content has changed and matches recruitment!
+    mock_scrape.return_value = ("<html><body>Careers Page - NCS Recruitment 2025 is open. Apply now! deadline 2025-12-31</body></html>", 200, 160)
+    mock_ai.return_value = {
+        'classification': 'REAL',
+        'confidence': 95,
+        'event_type': 'RECRUITMENT_OPEN',
+        'red_flags': [],
+        'extracted': {
+            'positions': 'Customs Officer',
+            'deadline': '2025-12-31',
+            'requirements': 'WAEC'
+        }
+    }
+    mock_send.return_value = {'message_id': 12345}
+
+    portal_check(portal.id)
+
+    assert Snapshot.objects.filter(portal=portal).count() == 2
+    snap2 = Snapshot.objects.order_by('-created_at').first()
+    assert snap2.has_change is True
+    assert snap2.triggered_alert is True
+
+    assert Alert.objects.count() == 1
+    alert = Alert.objects.first()
+    assert alert.trust_score >= 70
+    assert alert.status == 'APPROVED'

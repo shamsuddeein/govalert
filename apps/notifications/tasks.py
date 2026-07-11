@@ -52,3 +52,76 @@ def retry_failed_notifications():
             notif.mark_failed(f"Unexpected error: {str(exc)}")
 
     logger.info(f"Retry completed: {success_count} succeeded, {count - success_count} failed.")
+
+
+def dispatch_alert(alert_id: int):
+    """
+    Fan out alert to all active subscribers.
+    Creates Notification entries for all matching users and sends messages bulk.
+    """
+    from apps.alerts.models import Alert
+    from apps.subscriptions.models import Subscription
+    from apps.accounts.models import TelegramUser, UserState
+
+    logger.info(f"Starting dispatch for alert {alert_id}...")
+    try:
+        alert = Alert.objects.get(pk=alert_id)
+    except Alert.DoesNotExist:
+        logger.error(f"Alert {alert_id} not found for dispatch.")
+        return
+
+    # Fetch matching active users who are subscribed to the alert's agency
+    subscriptions = Subscription.objects.filter(
+        agency=alert.agency,
+        is_active=True,
+        user__state=UserState.ACTIVE
+    ).select_related('user')
+
+    users = [sub.user for sub in subscriptions]
+    if not users:
+        logger.info(f"No active subscribers for agency {alert.agency.acronym}. Dispatch skipped.")
+        return
+
+    logger.info(f"Found {len(users)} subscribers for alert {alert_id}.")
+
+    text = format_alert_full(alert)
+    keyboard = get_alert_keyboard(alert.id)
+
+    success_count = 0
+    failure_count = 0
+
+    for user in users:
+        # Check if already sent
+        if Notification.objects.filter(user=user, alert=alert).exists():
+            continue
+
+        notif = Notification.objects.create(
+            user=user,
+            alert=alert,
+            status=NotificationStatus.QUEUED
+        )
+
+        try:
+            result = send_message(
+                chat_id=user.telegram_id,
+                text=text,
+                reply_markup=keyboard
+            )
+            if result:
+                notif.mark_sent(result['message_id'])
+                success_count += 1
+            else:
+                notif.mark_failed("Send failed.")
+                failure_count += 1
+        except TelegramDeliveryException as exc:
+            notif.mark_failed(str(exc), blocked=True)
+            failure_count += 1
+        except Exception as exc:
+            notif.mark_failed(f"Unexpected error: {str(exc)}")
+            failure_count += 1
+
+        # Global Telegram rate limit is 30 msg/sec, sleep 0.034s per send
+        import time
+        time.sleep(0.034)
+
+    logger.info(f"Dispatch complete for alert {alert_id}: {success_count} sent, {failure_count} failed.")
