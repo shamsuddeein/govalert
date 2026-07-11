@@ -29,3 +29,26 @@ def test_dispatch_update_callback_query():
     with patch('apps.bot.handlers.callbacks.handle_callback') as mock_callback:
         dispatch_update(payload)
         mock_callback.assert_called_once_with(payload['callback_query'])
+
+
+def test_dispatch_update_channel_forward():
+    payload = {
+        'update_id': 1001,
+        'message': {
+            'chat': {'id': 12345},
+            'from': {'id': 12345, 'first_name': 'Test'},
+            'forward_from_chat': {
+                'id': -1004469069163,
+                'title': 'Test Channel',
+                'username': 'test_channel_username',
+                'type': 'channel'
+            }
+        }
+    }
+    with patch('apps.notifications.sender.send_message') as mock_send:
+        dispatch_update(payload)
+        mock_send.assert_called_once()
+        args, kwargs = mock_send.call_args
+        assert kwargs['chat_id'] == 12345
+        assert '-1004469069163' in kwargs['text']
+        assert 'Test Channel' in kwargs['text']

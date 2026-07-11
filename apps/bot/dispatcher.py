@@ -28,6 +28,28 @@ def dispatch_update(data: dict[str, Any]) -> None:
 
 def _handle_message(message: dict) -> None:
     """Route an incoming message to the correct command handler."""
+    # Check for forwarded channel messages first to help retrieve IDs
+    if 'forward_from_chat' in message:
+        chat = message['forward_from_chat']
+        if chat.get('type') == 'channel':
+            chat_id = chat.get('id')
+            chat_title = chat.get('title', 'Unknown')
+            chat_username = chat.get('username')
+            logger.info(f"Detected channel forward: {chat_title} (ID: {chat_id})")
+            from apps.notifications.sender import send_message
+            send_message(
+                chat_id=message['chat']['id'],
+                text=(
+                    f"🏷️ <b>Detected Channel ID</b>\n\n"
+                    f"• <b>Title</b>: <code>{chat_title}</code>\n"
+                    f"• <b>ID</b>: <code>{chat_id}</code>\n"
+                    f"• <b>Username</b>: @{chat_username if chat_username else 'None'}\n\n"
+                    f"You can copy this ID directly into your <code>.env</code> file."
+                ),
+                parse_mode='HTML'
+            )
+            return
+
     text: str = message.get('text', '')
     if not text:
         return
