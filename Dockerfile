@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     chromium chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+RUN mkdir -p /app/logs
 COPY requirements/ /app/requirements/
 RUN pip install --no-cache-dir -r requirements/production.txt
 RUN playwright install chromium

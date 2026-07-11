@@ -19,9 +19,12 @@ CSRF_COOKIE_SECURE = True
 X_FRAME_OPTIONS = 'DENY'
 
 # ─── Logging — Production ──────────────────────────────────────────────────────
+import os
+os.makedirs(BASE_DIR / 'logs', exist_ok=True)
+
 LOGGING['handlers']['file'] = {
     'class': 'logging.handlers.RotatingFileHandler',
-    'filename': 'logs/govalert.log',
+    'filename': str(BASE_DIR / 'logs' / 'govalert.log'),
     'maxBytes': 10 * 1024 * 1024,  # 10 MB
     'backupCount': 5,
     'formatter': 'verbose',
