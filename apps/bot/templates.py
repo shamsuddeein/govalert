@@ -47,3 +47,27 @@ def format_alert_unconfirmed(alert) -> str:
         f"Always confirm at the official <b>{alert.agency.name}</b> website before applying.\n\n"
         f"🛡️ Trust Score: {alert.trust_score}/100"
     )
+
+
+def format_portal_status_change(agency_acronym: str, new_status: str, timestamp: str) -> str:
+    """Portal status change alert template."""
+    return (
+        f"📉 <b>PORTAL STATUS CHANGE</b>\n\n"
+        f"🏢 <b>Agency:</b> {agency_acronym}\n"
+        f"📊 <b>Change:</b> Portal went {new_status.upper()}\n"
+        f"🕐 <b>Detected:</b> {timestamp}\n\n"
+        f"↩️ We will notify you when it comes back online."
+    )
+
+
+def format_deadline_extension(alert, old_deadline: str, new_deadline: str) -> str:
+    """Deadline extension alert template."""
+    positions = f"\n📋 <b>Positions:</b> {alert.positions}" if alert.positions else ''
+    return (
+        f"📅 <b>DEADLINE EXTENDED</b>\n\n"
+        f"🏢 <b>Agency:</b> {alert.agency.acronym}\n"
+        f"{positions}\n"
+        f"🔴 <b>Old Deadline:</b> {old_deadline}\n"
+        f"✅ <b>New Deadline:</b> {new_deadline}\n\n"
+        f"🔗 <a href='{alert.source_url}'>Apply on Official Portal</a>"
+    )
