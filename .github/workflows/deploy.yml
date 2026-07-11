@@ -1,0 +1,33 @@
+name: Deploy GovAlert
+on:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: |
+          pip install -r requirements/development.txt
+          pytest --cov=apps --cov-report=xml --cov-fail-under=80
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/govalert
+            git pull origin main
+            docker compose pull
+            docker compose up -d --build django celery-monitor celery-notify celery-ai celery-beat
+            docker compose exec django python manage.py migrate --noinput
+            docker compose exec django python manage.py collectstatic --noinput
+            docker compose exec django python manage.py sync_portal_schedules
+            echo 'Deployment complete'
