@@ -48,3 +48,15 @@ def test_scrape_portal_http_fail(mock_get):
     mock_get.side_effect = requests.RequestException("Connection Refused")
     with pytest.raises(ScraperException):
         scrape_portal("http://example.com", method="HTTP")
+
+
+@patch('apps.monitor.scraper.requests.get')
+def test_scrape_portal_pdf_fallback(mock_get):
+    mock_resp = MagicMock()
+    mock_resp.text = "Hello PDF Content fallback"
+    mock_resp.status_code = 200
+    mock_get.return_value = mock_resp
+
+    content, code, duration = scrape_portal("http://example.com/file.pdf", method="PDF")
+    assert content == "Hello PDF Content fallback"
+    assert code == 200
