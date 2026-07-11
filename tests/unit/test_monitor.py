@@ -83,7 +83,8 @@ def test_portal_check_pipeline(mock_send, mock_ai, mock_scrape):
         name="Customs Portal",
         url="https://customs.gov.ng/careers",
         is_active=True,
-        check_interval_minutes=10
+        check_interval_minutes=10,
+        scrape_method="PLAYWRIGHT"
     )
 
     # 1. First scrape: Initial snapshot (no change, no alert)

@@ -10,10 +10,13 @@ logger = logging.getLogger(__name__)
 def _get_or_create_user(message: dict):
     """Get or create a TelegramUser from an incoming message."""
     from apps.accounts.models import TelegramUser, UserState
+    from django.conf import settings
     from_user = message.get('from', {})
     telegram_id = from_user.get('id')
     if not telegram_id:
         return None, False
+
+    is_super = telegram_id in getattr(settings, 'SUPER_ADMIN_TELEGRAM_IDS', [])
 
     user, created = TelegramUser.objects.get_or_create(
         telegram_id=telegram_id,
@@ -22,6 +25,8 @@ def _get_or_create_user(message: dict):
             'last_name': from_user.get('last_name', ''),
             'username': from_user.get('username'),
             'state': UserState.NEW_USER,
+            'is_admin': is_super,
+            'is_super_admin': is_super,
         }
     )
 
@@ -32,8 +37,13 @@ def _get_or_create_user(message: dict):
         if user.first_name != from_user.get('first_name', ''):
             user.first_name = from_user.get('first_name', '')
             updated = True
+        # Ensure super admin permissions are updated if environment settings changed
+        if is_super and (not user.is_admin or not user.is_super_admin):
+            user.is_admin = True
+            user.is_super_admin = True
+            updated = True
         if updated:
-            user.save(update_fields=['first_name'])
+            user.save(update_fields=['first_name', 'is_admin', 'is_super_admin'])
 
     return user, created
 
