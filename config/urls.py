@@ -1,0 +1,29 @@
+"""
+GovAlert — Root URL Configuration
+"""
+from django.contrib import admin
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns = [
+    # Django Admin
+    path('admin/', admin.site.urls),
+
+    # Telegram Bot Webhook
+    path('telegram/', include('apps.bot.urls')),
+
+    # REST API
+    path('api/', include('apps.api.urls')),
+
+    # Prometheus metrics
+    path('', include('django_prometheus.urls')),
+]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+    # Silk profiler
+    urlpatterns += [path('silk/', include('silk.urls', namespace='silk'))]
