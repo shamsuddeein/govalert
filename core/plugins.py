@@ -17,12 +17,14 @@ class RequestsScraper(BaseScraperBackend):
     def scrape(self, url: str) -> tuple[str, int, int]:
         import requests
         import time
+        import urllib3
         from core.exceptions import ScraperException
         
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         start_time = time.time()
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, timeout=15, verify=False)
             response_time = int((time.time() - start_time) * 1000)
             return response.text, response.status_code, response_time
         except Exception as e:

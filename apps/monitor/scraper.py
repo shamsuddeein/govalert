@@ -19,6 +19,9 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
     Fetch content from a portal URL using either HTTP or Playwright.
     Returns: (raw_content_str, http_status_code, response_time_ms)
     """
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     headers = {
         'User-Agent': random.choice(USER_AGENTS),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -29,7 +32,7 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
 
     if method == 'HTTP':
         try:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(url, headers=headers, timeout=30, verify=False)
             response_time_ms = int((time.time() - start_time) * 1000)
             return response.text, response.status_code, response_time_ms
         except requests.RequestException as e:
@@ -51,7 +54,7 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
         except Exception as e:
             logger.warning(f"Playwright scrape failed/unavailable for {url}: {e}. Falling back to HTTP.")
             try:
-                response = requests.get(url, headers=headers, timeout=30)
+                response = requests.get(url, headers=headers, timeout=30, verify=False)
                 response_time_ms = int((time.time() - start_time) * 1000)
                 return response.text, response.status_code, response_time_ms
             except requests.RequestException as req_err:
@@ -61,7 +64,7 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
         try:
             import pdfplumber
             import io
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(url, headers=headers, timeout=30, verify=False)
             if response.status_code != 200:
                 raise ScraperException(f"Failed to download PDF: HTTP {response.status_code}")
 
@@ -74,7 +77,7 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
         except Exception as e:
             logger.warning(f"PDF scrape failed/unavailable for {url}: {e}. Falling back to HTTP.")
             try:
-                response = requests.get(url, headers=headers, timeout=30)
+                response = requests.get(url, headers=headers, timeout=30, verify=False)
                 response_time_ms = int((time.time() - start_time) * 1000)
                 return response.text, response.status_code, response_time_ms
             except requests.RequestException as req_err:
