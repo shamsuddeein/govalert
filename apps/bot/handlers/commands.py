@@ -110,11 +110,12 @@ def handle_agencies(message: dict):
     from apps.agencies.models import Agency
     from apps.notifications.sender import send_message
     chat_id = message['chat']['id']
-    agencies = Agency.objects.filter(is_active=True).prefetch_related('portals')
+    agencies = Agency.objects.filter(is_active=True).prefetch_related('portals').order_by('acronym')
     lines = [f"<b>Monitored Agencies ({agencies.count()})</b>\n"]
-    for agency in agencies:
-        status = "[Online]" if any(p.status == 'UP' for p in agency.portals.all()) else "[Offline]"
-        lines.append(f"{status} <b>{agency.acronym}</b> - {agency.name}")
+    for i, agency in enumerate(agencies, 1):
+        is_online = any(p.status in ['ONLINE', 'UP'] for p in agency.portals.all())
+        status = "[Online]" if is_online else "[Offline]"
+        lines.append(f"{i}. {status} <b>{agency.acronym}</b> - {agency.name}")
     send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
 
 
@@ -128,7 +129,7 @@ def handle_jobs(message: dict):
         send_message(chat_id=chat_id, text="No job alerts found yet. Check back soon!")
         return
     
-    formatted_alerts = [format_alert_brief(alert) for alert in alerts]
+    formatted_alerts = [f"{i}. {format_alert_brief(alert)}" for i, alert in enumerate(alerts, 1)]
     divider = "\n\n"
     text = "<b>Latest Jobs</b>\n\n" + divider.join(formatted_alerts)
     send_message(chat_id=chat_id, text=text, parse_mode='HTML')
@@ -148,8 +149,8 @@ def handle_history(message: dict):
         send_message(chat_id=chat_id, text="No alerts in your history yet.")
         return
     lines = [f"<b>Your Last {notifs.count()} Alerts</b>\n"]
-    for n in notifs:
-        lines.append(f"- [{n.alert.agency.acronym}] {n.alert.title} - {n.sent_at.strftime('%d %b %Y')}")
+    for i, n in enumerate(notifs, 1):
+        lines.append(f"{i}. [{n.alert.agency.acronym}] {n.alert.title} - {n.sent_at.strftime('%d %b %Y')}")
     send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
 
 
@@ -220,7 +221,7 @@ def handle_search(message: dict):
         send_message(chat_id=chat_id, text=f"No results for <b>{keyword}</b>", parse_mode='HTML')
         return
     
-    formatted_alerts = [format_alert_brief(alert) for alert in results]
+    formatted_alerts = [f"{i}. {format_alert_brief(alert)}" for i, alert in enumerate(results, 1)]
     divider = "\n\n"
     text = f"<b>Results for '{keyword}'</b>\n\n" + divider.join(formatted_alerts)
     send_message(chat_id=chat_id, text=text, parse_mode='HTML')
