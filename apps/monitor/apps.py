@@ -7,6 +7,15 @@ class MonitorConfig(AppConfig):
     name = 'apps.monitor'
 
     def ready(self):
+        # Check if we are running unit/integration tests
+        is_testing = (
+            'test' in sys.argv or
+            any('pytest' in arg for arg in sys.argv) or
+            'pytest' in sys.modules
+        )
+        if is_testing:
+            return
+
         # To avoid running scheduler twice in dev (reloader) or during migrations/commands
         # Only start scheduler when running the main web server
         # Django runserver sets RUN_MAIN='true' for the execution reload.
