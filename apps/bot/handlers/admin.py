@@ -37,7 +37,7 @@ def handle_admin(message: dict):
     chat_id = message['chat']['id']
     total_users = TelegramUser.objects.filter(state='ACTIVE').count()
     pending_alerts = Alert.objects.filter(status=AlertStatus.PENDING).count()
-    portals_down = Portal.objects.filter(status=PortalStatus.DOWN, is_active=True).count()
+    portals_down = Portal.objects.filter(status=PortalStatus.OFFLINE, is_active=True).count()
 
     text = (
         f"🔧 <b>GovAlert Admin Panel</b>\n\n"

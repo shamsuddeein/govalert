@@ -226,6 +226,8 @@ def handle_status(message: dict):
         f"<b>Portal Health Status</b>\n\n"
         f"Online: <b>{online}</b>\n"
         f"Offline: <b>{offline}</b>\n"
+        f"Blocked: <b>{blocked}</b>\n"
+        f"Captcha: <b>{captcha}</b>\n"
         f"Rate Limited: <b>{rate_limited}</b>\n"
         f"Maintenance: <b>{maintenance}</b>\n"
         f"Unknown: <b>{unknown}</b>\n\n"

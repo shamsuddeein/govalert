@@ -276,10 +276,10 @@ class Command(BaseCommand):
 
             # Create or update portal
             portal, portal_created = Portal.objects.get_or_create(
+                agency=agency,
                 url=portal_url,
                 defaults={
                     'name': agency_name,
-                    'agency': agency,
                     'priority': priority,
                     'scrape_method': scrape_method,
                     'tags': tags,
