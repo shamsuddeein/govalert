@@ -105,23 +105,65 @@ def handle_unsubscribe(message: dict):
     send_message(chat_id=message['chat']['id'], text=UNSUBSCRIBED_MESSAGE)
 
 
+def format_agencies_message(agencies):
+    online  = [a for a in agencies if a.status == "online"]
+    offline = [a for a in agencies if a.status != "online"]
+
+    lines = []
+    lines.append(f"📡 <b>Monitored Agencies</b> — {len(agencies)}")
+    lines.append(f"🟢 Online: {len(online)}   🔴 Offline: {len(offline)}")
+    lines.append("")
+
+    categories = {
+        "Security & Law Enforcement": ["NPF","NIS","Army","Navy","NAF","NDA","DSS","NSCDC","NCoS","CDCFIB","FFS"],
+        "Anti-Corruption & Justice":  ["EFCC","ICPC"],
+        "Finance & Revenue":          ["CBN","FIRS","FIRS","FMF"],
+        "Immigration & Identity":     ["NIS","NIMC","FRSC"],
+        "Education":                  ["JAMB","NUC","UBEC","TRCN","FME"],
+        "Health":                     ["NAFDAC","NHIA","FMH"],
+        "Infrastructure":             ["NRC","NPA","NIMASA","FMW"],
+        "Technology & Communications":["NCC","NITDA"],
+        "Other Federal Agencies":     ["NNPC","INEC","ICPC","FCSC","PSC","FMA","FMD","FMI","FMEnv","FMI","NDA","NDLEA"],
+    }
+
+    placed = set()
+    for category, acronyms in categories.items():
+        acronyms_upper = [ac.upper() for ac in acronyms]
+        members = [a for a in agencies if a.acronym.upper() in acronyms_upper and a.acronym.upper() not in placed]
+        if not members:
+            continue
+        lines.append(f"<b>{category}</b>")
+        for a in members:
+            dot = "🟢" if a.status == "online" else "🔴"
+            lines.append(f"{dot} {a.acronym} — {a.name}")
+            placed.add(a.acronym.upper())
+        lines.append("")
+
+    # Any not placed
+    rest = [a for a in agencies if a.acronym.upper() not in placed]
+    if rest:
+        lines.append("<b>Other</b>")
+        for a in rest:
+            dot = "🟢" if a.status == "online" else "🔴"
+            lines.append(f"{dot} {a.acronym} — {a.name}")
+
+    return "\n".join(lines)
+
+
 def handle_agencies(message: dict):
     """Show list of all monitored agencies with portal status."""
     from apps.agencies.models import Agency
     from apps.notifications.sender import send_message
     chat_id = message['chat']['id']
-    agencies = Agency.objects.filter(is_active=True).prefetch_related('portals').order_by('acronym')
+    agencies_qs = Agency.objects.filter(is_active=True).prefetch_related('portals').order_by('acronym')
     
-    lines = [
-        f"<b>MONITORED AGENCIES ({agencies.count()})</b>",
-        "──────────────────────────────\n"
-    ]
-    for i, agency in enumerate(agencies, 1):
+    agencies_list = list(agencies_qs)
+    for agency in agencies_list:
         is_online = any(p.status in ['ONLINE', 'UP'] for p in agency.portals.all())
-        status = "Online" if is_online else "Offline"
-        lines.append(f"<code>{i:02d}.</code> <b>{agency.acronym.upper()}</b> — {agency.name} (<code>{status}</code>)")
+        agency.status = "online" if is_online else "offline"
         
-    send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
+    text = format_agencies_message(agencies_list)
+    send_message(chat_id=chat_id, text=text, parse_mode='HTML')
 
 
 def handle_jobs(message: dict):
