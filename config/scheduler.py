@@ -119,6 +119,15 @@ def start():
     scheduler.start()
     logger.info("✅ APScheduler started with %d jobs.", len(scheduler.get_jobs()))
 
+    # Trigger initial portal checks immediately on startup in background executors
+    try:
+        from django.utils import timezone
+        scheduler.get_job('check_high_priority_portals').modify(next_run_time=timezone.now())
+        scheduler.get_job('check_standard_portals').modify(next_run_time=timezone.now())
+        logger.info("⚡ Triggered initial portal checks immediately on startup.")
+    except Exception as e:
+        logger.warning("Could not trigger initial checks: %s", e)
+
 
 def stop():
     """Gracefully stop the scheduler on Django shutdown."""
