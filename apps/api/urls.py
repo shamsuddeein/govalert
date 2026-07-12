@@ -2,7 +2,7 @@
 API app URLs — public and authenticated REST endpoints.
 """
 from django.urls import path, include
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from . import views
 
@@ -10,7 +10,7 @@ app_name = 'api'
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 auth_patterns = [
-    path('token/', TokenObtainPairView.as_view(), name='token_obtain'),
+    path('token/', views.EmailTokenObtainPairView.as_view(), name='token_obtain'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 

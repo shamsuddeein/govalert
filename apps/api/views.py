@@ -246,3 +246,13 @@ class HealthView(APIView):
             data['production_metrics'] = {'error': str(e)}
 
         return Response(data)
+
+
+from rest_framework_simplejwt.views import TokenObtainPairView
+from apps.api.serializers import EmailTokenObtainPairSerializer
+
+class EmailTokenObtainPairView(TokenObtainPairView):
+    """
+    Custom TokenObtainPairView that accepts email and password.
+    """
+    serializer_class = EmailTokenObtainPairSerializer

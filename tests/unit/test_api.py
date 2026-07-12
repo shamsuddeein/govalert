@@ -75,3 +75,49 @@ def test_health_api():
     assert 'telegram' in response.data
     assert 'scheduler' in response.data
     assert 'scrapers' in response.data
+
+
+@pytest.mark.django_db
+def test_token_obtain_email_api():
+    from django.contrib.auth.models import User
+    User.objects.create_superuser(username='testadmin', password='testpassword', email='admin@govalert.ng')
+    
+    client = APIClient()
+    url = reverse('api:token_obtain')
+    
+    # Try using email and password
+    response = client.post(url, {'email': 'admin@govalert.ng', 'password': 'testpassword'}, format='json')
+    assert response.status_code == 200
+    assert 'access' in response.data
+    assert 'refresh' in response.data
+
+    # Try using username in the email field (fallback)
+    response_fb = client.post(url, {'email': 'testadmin', 'password': 'testpassword'}, format='json')
+    assert response_fb.status_code == 200
+    assert 'access' in response_fb.data
+
+
+@pytest.mark.django_db
+def test_email_backend_and_form():
+    from django.contrib.auth.models import User
+    from apps.accounts.forms import EmailAdminAuthenticationForm
+    from django.contrib.auth import authenticate
+    
+    # Create admin user
+    user = User.objects.create_superuser(username='formadmin', password='formpassword', email='form@govalert.ng')
+    
+    # Test EmailAdminAuthenticationForm with email
+    form = EmailAdminAuthenticationForm(None, data={'username': 'form@govalert.ng', 'password': 'formpassword'})
+    assert form.is_valid()
+    assert form.user_cache == user
+    
+    # Test EmailAdminAuthenticationForm with username fallback
+    form_fb = EmailAdminAuthenticationForm(None, data={'username': 'formadmin', 'password': 'formpassword'})
+    assert form_fb.is_valid()
+    assert form_fb.user_cache == user
+
+    # Test direct authentication with email
+    authenticated_user = authenticate(username='form@govalert.ng', password='formpassword')
+    assert authenticated_user == user
+
+
