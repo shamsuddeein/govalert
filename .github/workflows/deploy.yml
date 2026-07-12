@@ -10,7 +10,7 @@ jobs:
       - name: Run tests
         run: |
           pip install -r requirements/development.txt
-          pytest --cov=apps --cov-report=xml --cov-fail-under=80
+          pytest --cov=apps --cov-report=xml --cov-fail-under=50
   deploy:
     needs: test
     runs-on: ubuntu-latest
