@@ -257,7 +257,7 @@ def handle_search(message: dict):
     # Extract keyword after /search command
     parts = message.get('text', '').split(maxsplit=1)
     if len(parts) < 2:
-        send_message(chat_id=chat_id, text="Usage: /search <keyword>\nExample: /search customs")
+        send_message(chat_id=chat_id, text="Usage: /search [keyword]\nExample: /search customs")
         return
     keyword = parts[1].strip()[:200]
     from apps.alerts.models import Alert, AlertStatus

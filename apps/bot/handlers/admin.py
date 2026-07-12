@@ -70,7 +70,7 @@ def handle_broadcast(message: dict):
     # Extract message text after /broadcast
     parts = message.get('text', '').split(maxsplit=1)
     if len(parts) < 2:
-        send_message(chat_id=chat_id, text="Usage: /broadcast <message text>\n\nThis will be sent to all active users.")
+        send_message(chat_id=chat_id, text="Usage: /broadcast [message text]\n\nThis will be sent to all active users.")
         return
 
     broadcast_text = parts[1].strip()
