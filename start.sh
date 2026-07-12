@@ -34,6 +34,10 @@ python manage.py migrate
 echo "Registering Telegram bot commands..."
 python manage.py register_bot_commands
 
+# Load portals
+echo "Loading official recruitment portals..."
+python manage.py load_ng_portals
+
 # Start Django development server in the background
 echo "Starting Django development server on port 8000..."
 nohup python manage.py runserver 0.0.0.0:8000 > runserver.log 2>&1 &

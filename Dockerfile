@@ -14,4 +14,4 @@ RUN playwright install chromium
 COPY . .
 RUN python manage.py collectstatic --noinput
 EXPOSE 8000
-CMD python manage.py migrate --noinput && gunicorn config.wsgi:application -w 2 -b 0.0.0.0:8000
+CMD python manage.py migrate --noinput && python manage.py load_ng_portals && gunicorn config.wsgi:application -w 2 -b 0.0.0.0:8000
