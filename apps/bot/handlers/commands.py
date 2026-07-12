@@ -111,11 +111,16 @@ def handle_agencies(message: dict):
     from apps.notifications.sender import send_message
     chat_id = message['chat']['id']
     agencies = Agency.objects.filter(is_active=True).prefetch_related('portals').order_by('acronym')
-    lines = [f"<b>Monitored Agencies ({agencies.count()})</b>\n"]
+    
+    lines = [
+        f"<b>MONITORED AGENCIES ({agencies.count()})</b>",
+        "──────────────────────────────\n"
+    ]
     for i, agency in enumerate(agencies, 1):
         is_online = any(p.status in ['ONLINE', 'UP'] for p in agency.portals.all())
-        status = "[Online]" if is_online else "[Offline]"
-        lines.append(f"{i}. {status} <b>{agency.acronym}</b> - {agency.name}")
+        status = "Online" if is_online else "Offline"
+        lines.append(f"<code>{i:02d}.</code> <b>{agency.acronym.upper()}</b> — {agency.name} (<code>{status}</code>)")
+        
     send_message(chat_id=chat_id, text='\n'.join(lines), parse_mode='HTML')
 
 
