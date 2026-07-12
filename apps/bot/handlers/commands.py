@@ -117,13 +117,14 @@ def format_agencies_message(agencies):
     categories = {
         "Security & Law Enforcement": ["NPF","NIS","Army","Navy","NAF","NDA","DSS","NSCDC","NCoS","CDCFIB","FFS"],
         "Anti-Corruption & Justice":  ["EFCC","ICPC"],
-        "Finance & Revenue":          ["CBN","FIRS","FIRS","FMF"],
+        "Finance & Revenue":          ["CBN", "FIRS", "FMF", "NCS"],
+        "Energy & Natural Resources": ["NNPC"],
         "Immigration & Identity":     ["NIS","NIMC","FRSC"],
         "Education":                  ["JAMB","NUC","UBEC","TRCN","FME"],
         "Health":                     ["NAFDAC","NHIA","FMH"],
         "Infrastructure":             ["NRC","NPA","NIMASA","FMW"],
         "Technology & Communications":["NCC","NITDA"],
-        "Other Federal Agencies":     ["NNPC","INEC","ICPC","FCSC","PSC","FMA","FMD","FMI","FMEnv","FMI","NDA","NDLEA"],
+        "Other Federal Agencies":     ["INEC","ICPC","FCSC","PSC","FMA","FMD","FMI","FMEnv","FMI","NDA","NDLEA"],
     }
 
     placed = set()
