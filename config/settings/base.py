@@ -84,6 +84,11 @@ ASGI_APPLICATION = 'config.asgi.application'
 # ─── Database — Phase 1: SQLite ────────────────────────────────────────────────
 # Single file, no server, no cost.
 # Phase 2: change ENGINE to postgresql and update remaining keys.
+#
+# WAL mode: Allows concurrent reads alongside a single write, massively reducing
+# "database is locked" errors from APScheduler running multiple executor threads.
+# busy_timeout: If a write is blocked, wait up to 5s before raising an error
+# instead of failing immediately (default behaviour).
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',

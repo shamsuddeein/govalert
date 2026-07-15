@@ -3,6 +3,16 @@ GovAlert APScheduler — Phase 1 task scheduler.
 Replaces Celery. No Redis needed. Runs in-process.
 
 Started by the Django app via AppConfig.ready() in apps/monitor/apps.py.
+
+Executor assignment strategy (to reduce SQLite contention):
+  high   — portal monitoring (time-sensitive, high throughput)
+  medium — notification retries (important but not latency-critical)
+  low    — maintenance tasks: cleanup, backup, health reports
+
+The SQLite "database is locked" warning from django_apscheduler occurs when
+two executor threads try to write the job's next_run_time simultaneously.
+Keeping maintenance jobs on the low executor (2 threads) minimises this.
+For a permanent fix, migrate to PostgreSQL (Phase 2).
 """
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -64,14 +74,15 @@ def start():
         executor='high',
     )
 
-    # Low-activity portals: every 30 minutes
+    # Low-activity portals: every 60 minutes — runs on 'low' executor to avoid
+    # competing with high-priority monitoring threads for SQLite write locks.
     scheduler.add_job(
         'apps.monitor.tasks:check_low_activity_portals',
         trigger=IntervalTrigger(minutes=settings.PORTAL_CHECK_INTERVAL_LOW_ACTIVITY),
         id='check_low_activity_portals',
         replace_existing=True,
-        misfire_grace_time=120,
-        executor='high',
+        misfire_grace_time=300,
+        executor='low',
     )
 
     # ── Verification and Retries (MEDIUM priority) ──────────────────────────────
@@ -119,12 +130,14 @@ def start():
     scheduler.start()
     logger.info("✅ APScheduler started with %d jobs.", len(scheduler.get_jobs()))
 
-    # Trigger initial portal checks immediately on startup in background executors
+    # Trigger only the high-priority job immediately on startup.
+    # Standard (MEDIUM) portals run 42 portals serially — triggering that
+    # immediately on startup causes a boot-time spike and competes with the
+    # scheduler's own DB writes, worsening the SQLite lock warning.
     try:
         from django.utils import timezone
         scheduler.get_job('check_high_priority_portals').modify(next_run_time=timezone.now())
-        scheduler.get_job('check_standard_portals').modify(next_run_time=timezone.now())
-        logger.info("⚡ Triggered initial portal checks immediately on startup.")
+        logger.info("⚡ Triggered initial high-priority portal check on startup.")
     except Exception as e:
         logger.warning("Could not trigger initial checks: %s", e)
 

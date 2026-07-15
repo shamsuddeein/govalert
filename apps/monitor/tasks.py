@@ -4,11 +4,23 @@ from storage.backup import export_and_backup
 
 logger = logging.getLogger(__name__)
 
+# Number of consecutive failures before a portal is automatically suspended.
+# Covers DNS failures, persistent timeouts, and dead domains. Operators can
+# re-enable a portal by setting is_active=True via the Django admin.
+MAX_CONSECUTIVE_FAILURES = 10
+
 
 def portal_check(portal_id: int):
     """
     Check a single portal for changes.
-    If changes are detected and recruitment matches, creates an alert.
+    If changes are detected and recruitment keywords match, creates an alert.
+
+    Design notes:
+    - Uses a single portal.save() per execution path to avoid redundant DB writes.
+    - Auto-suspends portals that have failed MAX_CONSECUTIVE_FAILURES times in a
+      row so dead domains don't waste the scrape budget indefinitely.
+    - Logs a content snippet when a change is detected but no keywords matched,
+      allowing operators to audit whether the keyword list needs expanding.
     """
     from apps.agencies.models import Portal, PortalStatus
     from apps.monitor.scraper import scrape_portal
@@ -39,27 +51,42 @@ def portal_check(portal_id: int):
         response_time_ms = 0
         success = False
 
+    # ── Update portal health ─────────────────────────────────────────────────
     portal.last_checked_at = timezone.now()
-    if success:
-        portal.last_successful_check_at = timezone.now()
-        if status_code in [403, 401]:
-            portal.status = PortalStatus.BLOCKED
-        elif status_code == 429:
-            portal.status = PortalStatus.RATE_LIMITED
-        elif status_code == 503:
-            portal.status = PortalStatus.MAINTENANCE
-        elif "captcha" in content.lower():
-            portal.status = PortalStatus.CAPTCHA
-        else:
-            portal.status = PortalStatus.ONLINE
-        portal.consecutive_failures = 0
-    else:
-        portal.status = PortalStatus.OFFLINE
-        portal.consecutive_failures += 1
-    portal.save()
 
     if not success:
+        portal.status = PortalStatus.OFFLINE
+        portal.consecutive_failures += 1
+
+        if portal.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            # Auto-suspend — stop wasting scrape budget on dead portals.
+            portal.is_active = False
+            portal.save(update_fields=[
+                'last_checked_at', 'status', 'consecutive_failures', 'is_active'
+            ])
+            logger.warning(
+                f"Portal SUSPENDED after {portal.consecutive_failures} consecutive failures: "
+                f"{portal.name} ({portal.url}). "
+                f"Set is_active=True in Django admin to re-enable."
+            )
+        else:
+            portal.save(update_fields=['last_checked_at', 'status', 'consecutive_failures'])
         return
+
+    # ── Success path ─────────────────────────────────────────────────────────
+    portal.last_successful_check_at = timezone.now()
+    portal.consecutive_failures = 0
+
+    if status_code in [403, 401]:
+        portal.status = PortalStatus.BLOCKED
+    elif status_code == 429:
+        portal.status = PortalStatus.RATE_LIMITED
+    elif status_code == 503:
+        portal.status = PortalStatus.MAINTENANCE
+    elif "captcha" in content.lower():
+        portal.status = PortalStatus.CAPTCHA
+    else:
+        portal.status = PortalStatus.ONLINE
 
     normalized_text = clean_html_to_text(content)
     content_hash = compute_content_hash(normalized_text)
@@ -74,19 +101,29 @@ def portal_check(portal_id: int):
         if prev_snapshot.content_hash != content_hash:
             has_change = True
             portal.last_change_detected_at = timezone.now()
-            portal.save()
 
-            # Analyze diff
             added_text = analyze_diff(prev_snapshot.raw_content, normalized_text)
             matched_data = match_recruitment_keywords(added_text)
 
             if matched_data['is_recruitment']:
-                # Create alert
                 create_alert_from_scrape(portal, content, matched_data)
                 triggered_alert = True
-    else:
-        # Initial snapshot
-        has_change = False
+            else:
+                # Log a snippet so operators can audit missed alerts and
+                # decide if the keyword list needs expanding.
+                snippet = added_text[:300].replace('\n', ' ').strip()
+                logger.info(
+                    f"Change detected for {portal.name} but no recruitment keywords matched. "
+                    f"Confidence={matched_data['confidence']}. "
+                    f"Added text sample: '{snippet}'"
+                )
+    # else: first-ever snapshot — just establish baseline, nothing to compare yet.
+
+    # Persist all portal health fields in a single save call.
+    portal.save(update_fields=[
+        'last_checked_at', 'last_successful_check_at', 'consecutive_failures',
+        'status', 'last_change_detected_at',
+    ])
 
     # Save current snapshot
     Snapshot.objects.create(
@@ -104,41 +141,65 @@ def portal_check(portal_id: int):
 
 
 def check_high_priority_portals():
-    """Scrape and check portals for high-priority agencies."""
+    """
+    Check portals marked as HIGH priority (every 5 minutes).
+
+    Previously filtered by check_interval_minutes__lte=10, which matched no
+    portals in production because all portals are stored with check_interval_minutes=15.
+    Now correctly filters on the `priority` field, which IS populated.
+    """
+    from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting high priority portals check...")
-    from apps.agencies.models import Portal
-    portals = Portal.objects.filter(is_active=True, check_interval_minutes__lte=10)
+    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.HIGH)
+    count = portals.count()
+    logger.info(f"Found {count} active HIGH priority portals to check.")
     for p in portals:
         try:
             portal_check(p.id)
         except Exception as e:
-            logger.error(f"Error checking high priority portal {p.id}: {e}")
+            logger.error(f"Error checking high priority portal {p.id} ({p.name}): {e}")
     logger.info("Finished high priority portals check.")
 
 
 def check_standard_portals():
-    """Scrape and check portals for standard-priority agencies."""
+    """
+    Check portals marked as MEDIUM priority (every 20 minutes).
+
+    Previously filtered by check_interval_minutes=15, which was the only value
+    in the DB so all portals ended up here regardless of their intended priority.
+    Now correctly filters on the `priority` field.
+    """
+    from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting standard portals check...")
-    from apps.agencies.models import Portal
-    portals = Portal.objects.filter(is_active=True, check_interval_minutes=15)
+    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.MEDIUM)
+    count = portals.count()
+    logger.info(f"Found {count} active MEDIUM priority portals to check.")
     for p in portals:
         try:
             portal_check(p.id)
         except Exception as e:
-            logger.error(f"Error checking standard portal {p.id}: {e}")
+            logger.error(f"Error checking standard portal {p.id} ({p.name}): {e}")
     logger.info("Finished standard portals check.")
 
 
 def check_low_activity_portals():
-    """Scrape and check portals for low-activity/low-priority agencies."""
+    """
+    Check portals marked as LOW priority (every 60 minutes).
+
+    Previously filtered by check_interval_minutes__gte=30, which matched no
+    portals because all portals had check_interval_minutes=15.
+    Now correctly filters on the `priority` field.
+    """
+    from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting low activity portals check...")
-    from apps.agencies.models import Portal
-    portals = Portal.objects.filter(is_active=True, check_interval_minutes__gte=30)
+    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.LOW)
+    count = portals.count()
+    logger.info(f"Found {count} active LOW priority portals to check.")
     for p in portals:
         try:
             portal_check(p.id)
         except Exception as e:
-            logger.error(f"Error checking low activity portal {p.id}: {e}")
+            logger.error(f"Error checking low activity portal {p.id} ({p.name}): {e}")
     logger.info("Finished low activity portals check.")
 
 

@@ -3,27 +3,63 @@ import difflib
 from bs4 import BeautifulSoup
 from core.utils import sanitise_html
 
-# Volume 3 Keyword Dictionary
+# ─── Recruitment Keyword Dictionaries ─────────────────────────────────────────
+# NOTE: Do NOT hardcode specific years (e.g. "2024/2025 recruitment") — those
+# expire and silently stop matching. Use year-agnostic patterns instead.
+
 HIGH_CONFIDENCE_TRIGGERS = [
+    # Direct recruitment intent
     'recruitment', 'recruitment portal', 'application portal',
     'apply now', 'submit application', 'recruitment exercise',
     'vacancy announcement', 'job advertisement', 'employment opportunity',
-    'application form', 'online registration', '2024/2025 recruitment',
-    'recruitment into', 'exercise for the post of', 'eligible candidates'
+    'application form', 'online registration',
+    # Year-agnostic patterns (replaces old "2024/2025 recruitment")
+    'recruitment exercise', 'recruitment into', 'exercise for the post of',
+    'eligible candidates', 'eligible applicants',
+    # Nigerian-specific phrasing
+    'applications are invited', 'invitation for applications',
+    'vacancies exist', 'seeks to recruit', 'is recruiting',
+    'open for recruitment', 'commence recruitment', 'recruitment commences',
+    'portal is open', 'portal now open', 'application window',
+    'shortlisting exercise', 'written examination',
+    # Military / paramilitary specific
+    'enlistment', 'commission into', 'intake exercise',
+    'new intake', 'recruitment of', 'cadet recruitment',
+    'officer cadet application',
+    # Civil service specific
+    'federal civil service', 'public service', 'career opportunities',
+    'job openings', 'career opening',
 ]
 
 MEDIUM_CONFIDENCE_TRIGGERS = [
     'portal', 'form', 'apply', 'candidate', 'shortlist',
     'requirements', 'qualifications', 'position', 'cadre',
-    'officer', 'constable', 'officer cadet', 'batch'
+    'officer', 'constable', 'officer cadet', 'batch',
+    'screening', 'interview', 'aptitude test', 'physical fitness',
+    'passport photograph', 'o level', 'o\u2019level', 'ssce', 'waec', 'neco',
+    'minimum qualification', 'age limit', 'between the ages',
+    'years of experience', 'bsc', 'hnd', 'ond', 'nd', 'degree', 'certificate',
+    'application fee', 'no application fee', 'free of charge',
+    'closing date', 'deadline', 'before the closing',
+    'submit online', 'complete the form', 'fill the form',
+]
+
+# Patterns that, if matched, should be treated as NEGATIVE signals
+# (noise changes that are definitely not recruitment).
+NOISE_PATTERNS = [
+    r'cookie', r'privacy policy', r'javascript', r'stylesheet',
+    r'google analytics', r'social media', r'follow us', r'subscribe to',
 ]
 
 DEADLINE_PATTERNS = [
-    r'(?i)deadline[:\s]+(.{5,40})',
-    r'(?i)closing date[:\s]+(.{5,40})',
-    r'(?i)applications? close[s]? on (.{5,40})',
-    r'(?i)submit (?:on or )?before (.{5,40})',
-    r'\d{1,2}(?:st|nd|rd|th)? \w+ \d{4}',
+    r'(?i)deadline[:\s]+(.{5,60})',
+    r'(?i)closing date[:\s]+(.{5,60})',
+    r'(?i)applications?\s+close[s]?\s+on\s+(.{5,60})',
+    r'(?i)submit\s+(?:on\s+or\s+)?before\s+(.{5,60})',
+    r'(?i)on\s+or\s+before\s+(.{5,60})',
+    r'(?i)not\s+later\s+than\s+(.{5,60})',
+    # Nigerian date formats
+    r'\d{1,2}(?:st|nd|rd|th)?\s+\w+\s+\d{4}',
     r'\d{1,2}/\d{1,2}/\d{4}',
     r'\d{4}-\d{2}-\d{2}',
 ]
@@ -38,7 +74,12 @@ def clean_html_to_text(html_content: str) -> str:
         tag.decompose()
 
     # Locate main body content area
-    main = soup.find('main') or soup.find('article') or soup.find('div', id='content') or soup.find('div', class_='content')
+    main = (
+        soup.find('main') or
+        soup.find('article') or
+        soup.find('div', id='content') or
+        soup.find('div', class_='content')
+    )
     if main:
         text = main.get_text(separator=' ')
     else:
@@ -61,16 +102,50 @@ def analyze_diff(old_text: str, new_text: str) -> str:
 
 def match_recruitment_keywords(text: str) -> dict:
     """
-    Scan text content for recruitment triggers and attempt to extract deadlines/positions.
-    Returns: { 'is_recruitment': bool, 'confidence': str, 'deadline': str, 'positions': str }
+    Scan text content for recruitment triggers and extract deadlines/positions.
+
+    Scoring logic:
+    - HIGH confidence: 2+ high triggers, OR 1 high + 2+ medium triggers.
+    - MEDIUM confidence: 1 high trigger, OR 3+ medium triggers.
+    - LOW confidence: everything else.
+
+    Noise filtering: if the added text is dominated by tracking scripts,
+    cookie notices, or social media widgets, suppress the match.
+
+    Returns:
+        {
+            'is_recruitment': bool,
+            'confidence': str ('HIGH' | 'MEDIUM' | 'LOW'),
+            'deadline': str,
+            'positions': str,
+            'rule_matches': list[str],
+        }
     """
     text_lower = text.lower()
+
+    # Early noise filter: if the diff is noise-dominated, skip matching.
+    noise_count = sum(1 for p in NOISE_PATTERNS if re.search(p, text_lower))
+    word_count = len(text.split())
+    if noise_count >= 3 and word_count < 150:
+        return {
+            'is_recruitment': False,
+            'confidence': 'LOW',
+            'deadline': 'Not Specified',
+            'positions': 'Multiple Positions',
+            'rule_matches': [],
+        }
 
     high_matches = [trig for trig in HIGH_CONFIDENCE_TRIGGERS if trig in text_lower]
     med_matches = [trig for trig in MEDIUM_CONFIDENCE_TRIGGERS if trig in text_lower]
 
     is_recruitment = len(high_matches) >= 2 or (len(high_matches) >= 1 and len(med_matches) >= 2)
-    confidence = 'HIGH' if len(high_matches) >= 2 else ('MEDIUM' if len(high_matches) >= 1 or len(med_matches) >= 3 else 'LOW')
+
+    if len(high_matches) >= 2:
+        confidence = 'HIGH'
+    elif len(high_matches) >= 1 or len(med_matches) >= 3:
+        confidence = 'MEDIUM'
+    else:
+        confidence = 'LOW'
 
     # Extract deadline
     deadline = ''
@@ -85,9 +160,9 @@ def match_recruitment_keywords(text: str) -> dict:
     sentences = re.split(r'[.!?\n]', text)
     for sent in sentences:
         sent_lower = sent.lower()
-        if any(w in sent_lower for w in ['recruit', 'vacancy', 'position', 'post', 'hiring']):
+        if any(w in sent_lower for w in ['recruit', 'vacancy', 'position', 'post', 'hiring', 'enlist', 'commission']):
             cleaned_sent = re.sub(r'\s+', ' ', sent).strip()
-            if 15 < len(cleaned_sent) < 150:
+            if 15 < len(cleaned_sent) < 200:
                 positions_list.append(cleaned_sent)
                 if len(positions_list) >= 3:
                     break
@@ -98,5 +173,6 @@ def match_recruitment_keywords(text: str) -> dict:
         'is_recruitment': is_recruitment,
         'confidence': confidence,
         'deadline': deadline[:100] if deadline else 'Not Specified',
-        'positions': positions[:250]
+        'positions': positions[:250],
+        'rule_matches': high_matches + med_matches,
     }

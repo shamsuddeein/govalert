@@ -13,23 +13,72 @@ class BaseScraperBackend:
         raise NotImplementedError
 
 
+_USER_AGENTS = [
+    # Chrome on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    # Safari on macOS
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    # Firefox on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) "
+    "Gecko/20100101 Firefox/125.0",
+]
+
+
 class RequestsScraper(BaseScraperBackend):
+    """
+    HTTP scraper using the requests library.
+
+    Improvements over the original:
+    - Rotates through 3 real browser User-Agent strings.
+    - Sends Accept / Accept-Language headers to look like a real browser.
+    - Performs one automatic retry with a 2-second backoff on connection-level
+      errors (not on DNS failures or timeouts, which are already counted as
+      hard failures by the task layer).
+    """
+
+    _HEADERS_BASE = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+    }
+
     def scrape(self, url: str) -> tuple[str, int, int]:
+        import random
         import requests
         import time
         import urllib3
         from core.exceptions import ScraperException
-        
+
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        headers = {**self._HEADERS_BASE, 'User-Agent': random.choice(_USER_AGENTS)}
+        timeout = 15
         start_time = time.time()
-        try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            response = requests.get(url, headers=headers, timeout=15, verify=False)
-            response_time = int((time.time() - start_time) * 1000)
-            return response.text, response.status_code, response_time
-        except Exception as e:
-            response_time = int((time.time() - start_time) * 1000)
-            raise ScraperException(f"RequestsScraper failed: {e}") from e
+        last_exc = None
+
+        for attempt in range(2):   # 1 try + 1 retry
+            try:
+                response = requests.get(
+                    url, headers=headers, timeout=timeout, verify=False, allow_redirects=True
+                )
+                response_time = int((time.time() - start_time) * 1000)
+                return response.text, response.status_code, response_time
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                last_exc = e
+                if attempt == 0:
+                    logger.debug(f"RequestsScraper: transient error on attempt 1 for {url}: {e}. Retrying in 2s...")
+                    time.sleep(2)
+            except Exception as e:
+                # Non-retryable error (e.g. invalid URL, SSL decode error)
+                response_time = int((time.time() - start_time) * 1000)
+                raise ScraperException(f"RequestsScraper failed: {e}") from e
+
+        response_time = int((time.time() - start_time) * 1000)
+        raise ScraperException(f"RequestsScraper failed after 2 attempts: {last_exc}") from last_exc
 
 
 class PlaywrightScraper(BaseScraperBackend):
