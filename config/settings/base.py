@@ -117,13 +117,15 @@ AUTHENTICATION_BACKENDS = [
 # ─── Sessions ──────────────────────────────────────────────────────────────────
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Stored in SQLite
 
-# ─── DRF ───────────────────────────────────────────────────────────────────────
+# ─── DRF ──────────────────────────────────────────────────────────────────
+# Public endpoints (agencies, jobs, status) use AllowAny — no auth needed.
+# Admin and user-specific endpoints declare their own permission_classes.
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',
     ),
     'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardResultsPagination',
     'PAGE_SIZE': 20,
@@ -144,9 +146,22 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# ─── CORS ──────────────────────────────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000', cast=Csv())
+# ─── CORS ─────────────────────────────────────────────────────────────────
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default=','.join([
+        'http://localhost:3000',
+        'http://localhost:8081',
+        'https://govalert-henna.vercel.app',
+    ]),
+    cast=Csv()
+)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    # Matches all Vercel preview URLs: https://govalert-*.vercel.app
+    r'^https://govalert-[a-z0-9-]+\.vercel\.app$',
+]
 CORS_ALLOW_CREDENTIALS = True
+FRONTEND_URL = config('FRONTEND_URL', default='https://govalert-henna.vercel.app')
 
 # ─── Static & Media ────────────────────────────────────────────────────────────
 STATIC_URL = '/static/'

@@ -1,29 +1,58 @@
 """
-API app URLs — public and authenticated REST endpoints.
+GovAlert API — URL configuration.
+
+Public v1 routes (no auth required):
+  GET  /api/v1/agencies/
+  GET  /api/v1/agencies/{slug}/
+  GET  /api/v1/jobs/
+  GET  /api/v1/jobs/{ref}/
+  GET  /api/v1/status/
+  GET  /api/v1/status/live-feed/
+  GET  /api/v1/health/
+
+Auth routes:
+  POST /api/auth/token/
+  POST /api/auth/token/refresh/
+
+Admin routes (IsAdminUser required):
+  GET  /api/v1/admin/portals/
+  GET  /api/v1/admin/portals/{pk}/
+  POST /api/v1/admin/alerts/{pk}/verify/
+  POST /api/v1/admin/alerts/{pk}/reject/
+  POST /api/v1/admin/broadcast/
+  GET  /api/v1/admin/stats/
 """
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
-
 from . import views
 
 app_name = 'api'
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Auth ───────────────────────────────────────────────────────────────────────
 auth_patterns = [
     path('token/', views.EmailTokenObtainPairView.as_view(), name='token_obtain'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 
-# ── Public ────────────────────────────────────────────────────────────────────
+# ── Public v1 ─────────────────────────────────────────────────────────────────
 public_patterns = [
+    # Agencies
     path('agencies/', views.AgencyListView.as_view(), name='agency_list'),
-    path('agencies/<int:pk>/', views.AgencyDetailView.as_view(), name='agency_detail'),
-    path('alerts/latest/', views.LatestAlertsView.as_view(), name='latest_alerts'),
-    path('portals/status/', views.PortalStatusView.as_view(), name='portal_status'),
+    path('agencies/<slug:slug>/', views.AgencyDetailView.as_view(), name='agency_detail'),
+
+    # Jobs (Alerts)
+    path('jobs/', views.JobListView.as_view(), name='job_list'),
+    path('jobs/<str:ref>/', views.JobDetailView.as_view(), name='job_detail'),
+
+    # System Status
+    path('status/', views.SystemStatusView.as_view(), name='system_status'),
+    path('status/live-feed/', views.LiveFeedView.as_view(), name='live_feed'),
+
+    # Health
     path('health/', views.HealthView.as_view(), name='health'),
 ]
 
-# ── Admin ─────────────────────────────────────────────────────────────────────
+# ── Admin v1 ──────────────────────────────────────────────────────────────────
 admin_patterns = [
     path('portals/', views.AdminPortalListView.as_view(), name='admin_portal_list'),
     path('portals/<int:pk>/', views.AdminPortalDetailView.as_view(), name='admin_portal_detail'),

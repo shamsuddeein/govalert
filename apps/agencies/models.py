@@ -4,6 +4,7 @@ Agency — a Nigerian government body being monitored.
 Portal — a specific URL within an agency that is scraped for recruitment news.
 """
 from django.db import models
+from django.utils.text import slugify
 
 
 class AgencyCategory(models.TextChoices):
@@ -66,6 +67,10 @@ class Agency(models.Model):
         max_length=20, unique=True,
         help_text="Short code e.g. NNPC, NCS, EFCC."
     )
+    slug = models.SlugField(
+        max_length=30, unique=True, blank=True,
+        help_text="URL-safe identifier, auto-generated from acronym. e.g. 'nnpc', 'ncs'."
+    )
     official_domains = models.JSONField(
         default=list,
         help_text="List of whitelisted official domains e.g. [\"customs.gov.ng\"]"
@@ -89,6 +94,24 @@ class Agency(models.Model):
         help_text="Brief description of the agency for /agencies command."
     )
 
+    # ── Trust & Verification ──────────────────────────────────────────────────
+    vetted_score = models.PositiveIntegerField(
+        default=85,
+        help_text="Agency vetting score 0-100. Manual admin field."
+    )
+    avg_confidence_score = models.FloatField(
+        default=0.0,
+        help_text="Average AI confidence score across all alerts from this agency."
+    )
+    false_positives = models.PositiveIntegerField(
+        default=0,
+        help_text="Count of confirmed false-positive alerts from this agency."
+    )
+    scam_domains_blocked = models.PositiveIntegerField(
+        default=0,
+        help_text="Count of scam domains blocked for this agency."
+    )
+
     # ── Denormalised Counters ─────────────────────────────────────────────────
     subscriber_count = models.PositiveIntegerField(
         default=0,
@@ -110,6 +133,11 @@ class Agency(models.Model):
 
     def __str__(self):
         return f"{self.acronym} — {self.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.acronym)
+        super().save(*args, **kwargs)
 
     def get_primary_domain(self) -> str:
         """Return the first official domain for display purposes."""
@@ -177,6 +205,12 @@ class Portal(models.Model):
         default=PortalStatus.UNKNOWN,
         db_index=True,
         help_text="Deprecated. Use health_status instead."
+    )
+
+    # ── Job/Recruitment Metadata ─────────────────────────────────────────────
+    location_state = models.CharField(
+        max_length=50, blank=True, default='Federal',
+        help_text="Primary location/state for this portal's listings."
     )
 
     # ── Health Stats ──────────────────────────────────────────────────────────
