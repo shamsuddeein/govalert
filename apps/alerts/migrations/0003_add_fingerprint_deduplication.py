@@ -33,9 +33,7 @@ class Migration(migrations.Migration):
             model_name='recruitmentevent',
             name='fingerprint',
             field=models.CharField(
-                default='',
                 max_length=64,
-                db_index=True,
                 help_text='SHA-256 fingerprint of recruitment identifying data. Used for deduplication.'
             ),
             preserve_default=False,

@@ -16,6 +16,8 @@ class AgencyListSerializer(serializers.ModelSerializer):
     last_checked = serializers.SerializerMethodField()
     response_time_ms = serializers.SerializerMethodField()
     jobs_available = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
 
     class Meta:
         model = Agency
@@ -64,9 +66,31 @@ class AgencyListSerializer(serializers.ModelSerializer):
             status=AlertStatus.APPROVED,
         ).count()
 
+    def get_description(self, obj):
+        desc = obj.description or ''
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', desc)
+        truncated = ' '.join(sentences[:2]).strip()
+        return truncated
+
+    def get_category(self, obj):
+        mapping = {
+            'SECURITY': 'Security',
+            'FINANCE': 'Finance',
+            'UTILITIES': 'Utilities',
+            'HEALTH': 'Health',
+            'EDUCATION': 'Education',
+            'TRANSPORT': 'Transport',
+            'STATISTICS': 'Statistics',
+            'JUDICIARY': 'Judiciary',
+            'OTHER': 'Other',
+        }
+        return mapping.get(obj.category, obj.category)
+
 
 class AgencyDetailSerializer(AgencyListSerializer):
     """Full serializer for GET /api/v1/agencies/{slug}/"""
+    description = serializers.CharField(read_only=True)
     monitoring_interval_minutes = serializers.SerializerMethodField()
     uptime_percent = serializers.SerializerMethodField()
     total_recruitments_detected = serializers.IntegerField(source='total_alerts_sent', read_only=True)
@@ -134,7 +158,48 @@ class AgencyDetailSerializer(AgencyListSerializer):
         return None
 
     def get_last_offline_duration_minutes(self, obj):
-        # Not tracked at snapshot level; return null for now
+        from django.utils import timezone
+        portal = self._primary_portal(obj)
+        if not portal:
+            return None
+        
+        snaps = list(Snapshot.objects.filter(portal=portal).order_by('-created_at')[:20])
+        if not snaps:
+            return None
+        
+        # Current status is offline
+        if snaps[0].status_code is not None and snaps[0].status_code >= 400:
+            first_offline = snaps[0]
+            for s in snaps:
+                if s.status_code is not None and s.status_code >= 400:
+                    first_offline = s
+                else:
+                    break
+            duration = timezone.now() - first_offline.created_at
+            return int(duration.total_seconds() // 60)
+        
+        # Find last offline check
+        offline_idx = -1
+        for i, s in enumerate(snaps):
+            if s.status_code is not None and s.status_code >= 400:
+                offline_idx = i
+                break
+        
+        if offline_idx != -1:
+            online_before = snaps[offline_idx - 1] if offline_idx > 0 else None
+            first_offline = snaps[offline_idx]
+            for s in snaps[offline_idx:]:
+                if s.status_code is not None and s.status_code >= 400:
+                    first_offline = s
+                else:
+                    break
+            if online_before:
+                duration = online_before.created_at - first_offline.created_at
+                return int(duration.total_seconds() // 60)
+            else:
+                duration = timezone.now() - first_offline.created_at
+                return int(duration.total_seconds() // 60)
+                
         return None
 
 
@@ -326,3 +391,76 @@ class LiveFeedItemSerializer(serializers.Serializer):
     event_type = serializers.CharField()
     event_time = serializers.DateTimeField()
     time_ago = serializers.CharField()
+
+
+# ─── User & Auth Serializers ───────────────────────────────────────────────────
+
+from django.contrib.auth.models import User
+from apps.accounts.models import WebUser
+
+
+class RegisterSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=6)
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
+    def create(self, validated_data):
+        name = validated_data['name'].strip()
+        email = validated_data['email'].lower().strip()
+        password = validated_data['password']
+
+        parts = name.split(' ', 1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else ''
+
+        # Use email prefix or unique string for username
+        username = email.split('@')[0]
+        base_username = username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+        )
+
+        WebUser.objects.create(user=user)
+        return user
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(source='user.email', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', required=False)
+    last_name = serializers.CharField(source='user.last_name', required=False)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    categories_of_interest = serializers.JSONField(required=False)
+
+    class Meta:
+        model = WebUser
+        fields = ['email', 'first_name', 'last_name', 'phone', 'categories_of_interest']
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop('user', {})
+        if 'first_name' in user_data:
+            instance.user.first_name = user_data['first_name']
+        if 'last_name' in user_data:
+            instance.user.last_name = user_data['last_name']
+        if user_data:
+            instance.user.save()
+
+        instance.phone = validated_data.get('phone', instance.phone)
+        if 'categories_of_interest' in validated_data:
+            instance.categories_of_interest = validated_data['categories_of_interest']
+        instance.save()
+        return instance
+

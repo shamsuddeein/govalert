@@ -28,11 +28,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Step 1: add non-unique, nullable slug column first
+        # Step 1: add non-unique, nullable slug column first as CharField (no index)
         migrations.AddField(
             model_name='agency',
             name='slug',
-            field=models.SlugField(
+            field=models.CharField(
                 max_length=30, blank=True, default='',
                 help_text="URL-safe identifier, auto-generated from acronym. e.g. 'nnpc', 'ncs'.",
             ),

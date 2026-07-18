@@ -28,4 +28,32 @@ if [ ! -z "$pids" ]; then
     kill -9 $pids 2>/dev/null
 fi
 
+# Stop Celery processes
+if [ -f "celery.pids" ]; then
+    echo "Stopping Celery processes..."
+    while read -r PID; do
+        if [ ! -z "$PID" ]; then
+            kill "$PID" 2>/dev/null
+        fi
+    done < celery.pids
+    sleep 1
+    while read -r PID; do
+        if [ ! -z "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
+            echo "Forcing termination of Celery process $PID..."
+            kill -9 "$PID" 2>/dev/null
+        fi
+    done < celery.pids
+    rm -f celery.pids
+fi
+
+# Clean up leftover celery processes
+leftover_pids=$(pgrep -f "celery -A config")
+if [ ! -z "$leftover_pids" ]; then
+    echo "Stopping leftover Celery processes (PIDs: $leftover_pids)..."
+    kill $leftover_pids 2>/dev/null
+    sleep 1
+    kill -9 $leftover_pids 2>/dev/null
+fi
+
 echo "GovAlert stopped successfully."
+

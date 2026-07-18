@@ -26,6 +26,11 @@ class MonitorConfig(AppConfig):
         if is_testing:
             return
 
+        from django.conf import settings
+        if getattr(settings, 'USE_CELERY', False):
+            # Skip APScheduler when using Celery
+            return
+
         # To avoid running scheduler twice in dev (reloader) or during
         # migrations/commands, only start scheduler when running the main
         # web server. Django runserver sets RUN_MAIN='true' for the reloader.

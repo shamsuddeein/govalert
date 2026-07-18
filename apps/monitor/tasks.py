@@ -1,6 +1,7 @@
 import logging
 from django.utils import timezone
 from storage.backup import export_and_backup
+from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 MAX_CONSECUTIVE_FAILURES = 10
 
 
+@shared_task
 def portal_check(portal_id: int):
     """
     Check a single portal for changes.
@@ -140,6 +142,7 @@ def portal_check(portal_id: int):
     logger.info(f"Portal check complete: {portal.name}. Change={has_change}, AlertTriggered={triggered_alert}")
 
 
+@shared_task
 def check_high_priority_portals():
     """
     Check portals marked as HIGH priority (every 5 minutes).
@@ -161,6 +164,7 @@ def check_high_priority_portals():
     logger.info("Finished high priority portals check.")
 
 
+@shared_task
 def check_standard_portals():
     """
     Check portals marked as MEDIUM priority (every 20 minutes).
@@ -182,6 +186,7 @@ def check_standard_portals():
     logger.info("Finished standard portals check.")
 
 
+@shared_task
 def check_low_activity_portals():
     """
     Check portals marked as LOW priority (every 60 minutes).
@@ -203,6 +208,7 @@ def check_low_activity_portals():
     logger.info("Finished low activity portals check.")
 
 
+@shared_task
 def nightly_backup():
     """Export database to JSON and post to the backup channel."""
     logger.info("Starting nightly backup task...")
@@ -213,6 +219,7 @@ def nightly_backup():
         logger.error("Nightly backup task failed.")
 
 
+@shared_task
 def daily_health_report():
     """Generate daily health report and notify super admins."""
     logger.info("Generating daily health report...")

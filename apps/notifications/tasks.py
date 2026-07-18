@@ -6,10 +6,12 @@ from apps.notifications.sender import send_message
 from core.exceptions import TelegramDeliveryException
 from apps.bot.templates import format_alert_full
 from apps.bot.keyboards import get_alert_keyboard
+from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
 
+@shared_task
 def retry_failed_notifications():
     """
     Retry notifications that failed in the last 24 hours.
@@ -54,6 +56,7 @@ def retry_failed_notifications():
     logger.info(f"Retry completed: {success_count} succeeded, {count - success_count} failed.")
 
 
+@shared_task
 def dispatch_alert(alert_id: int):
     """
     Fan out alert to all active subscribers.

@@ -264,15 +264,26 @@ class Command(BaseCommand):
             country = data.get('country', 'NG')
             poll_interval = get_poll_interval(priority)
 
-            # Create or get agency
-            # Create or get agency by acronym (unique identifier)
-            agency, agency_created = Agency.objects.get_or_create(
-                acronym=agency_acronym,
-                defaults={'name': agency_name}
-            )
-            if not agency_created and agency.name != agency_name:
-                agency.name = agency_name
-                agency.save(update_fields=['name'])
+            # Create or get agency by acronym or name (robust to discrepancies)
+            agency = Agency.objects.filter(acronym=agency_acronym).first()
+            if not agency:
+                agency = Agency.objects.filter(name=agency_name).first()
+            
+            if not agency:
+                agency = Agency.objects.create(
+                    acronym=agency_acronym,
+                    name=agency_name
+                )
+            else:
+                updated_fields = []
+                if agency.acronym != agency_acronym:
+                    agency.acronym = agency_acronym
+                    updated_fields.append('acronym')
+                if agency.name != agency_name:
+                    agency.name = agency_name
+                    updated_fields.append('name')
+                if updated_fields:
+                    agency.save(update_fields=updated_fields)
 
             # Create or update portal
             portal, portal_created = Portal.objects.get_or_create(

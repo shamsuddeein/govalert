@@ -153,3 +153,33 @@ class TelegramUser(models.Model):
         TelegramUser.objects.filter(pk=self.pk).update(
             alerts_received=models.F('alerts_received') + 1
         )
+
+
+class WebUser(models.Model):
+    """
+    Web user profile extending Django's built-in User model.
+    Stores saved jobs, phone number, and preferences for web application users.
+    """
+    user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='web_profile'
+    )
+    phone = models.CharField(max_length=20, blank=True, default='')
+    categories_of_interest = models.JSONField(default=list, blank=True)
+    saved_jobs = models.ManyToManyField(
+        'alerts.Alert',
+        blank=True,
+        related_name='saved_by_users'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'web_users'
+        verbose_name = 'Web User Profile'
+        verbose_name_plural = 'Web User Profiles'
+
+    def __str__(self):
+        return f"WebUser: {self.user.email or self.user.username}"
+

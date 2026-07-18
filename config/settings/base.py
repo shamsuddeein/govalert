@@ -32,7 +32,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
-    'django_apscheduler',   # Phase 1 scheduler — no Redis needed
+    'django_apscheduler',   # Phase 1 scheduler
+    'django_celery_beat',   # Phase 2 scheduler
+    'django_celery_results', # Celery results stored in DB
 
     # Project apps
     'apps.accounts.apps.AccountsConfig',
@@ -81,31 +83,26 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-# ─── Database — Phase 1: SQLite ────────────────────────────────────────────────
-# Single file, no server, no cost.
-# Phase 2: change ENGINE to postgresql and update remaining keys.
-#
-# WAL mode: Allows concurrent reads alongside a single write, massively reducing
-# "database is locked" errors from APScheduler running multiple executor threads.
-# busy_timeout: If a write is blocked, wait up to 5s before raising an error
-# instead of failing immediately (default behaviour).
+# ─── Database — Phase 2: PostgreSQL ────────────────────────────────────────────
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'users.db',
-        'OPTIONS': {
-            'timeout': 20,
-        },
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='govalert_db'),
+        'USER': config('DB_USER', default='deen'),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default=''),
+        'PORT': config('DB_PORT', default='5432'),
     }
 }
 
-# ─── Cache — Phase 1: Local Memory ─────────────────────────────────────────────
-# No Redis needed. LocMemCache is per-process — fine for single-server MVP.
-# Phase 2: Switch to django_redis.cache.RedisCache
+# ─── Cache — Phase 2: Redis ───────────────────────────────────────────────────
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'govalert-cache',
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/0'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
     }
 }
 
@@ -151,6 +148,7 @@ CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default=','.join([
         'http://localhost:3000',
+        'http://localhost:8080',
         'http://localhost:8081',
         'https://govalert-henna.vercel.app',
     ]),
@@ -259,3 +257,58 @@ INDEX_JSON_PATH = BASE_DIR / 'config' / 'index.json'
 
 # ─── Storage Abstraction ───────────────────────────────────────────────────────
 STORAGE_BACKEND = config('STORAGE_BACKEND', default='core.storage.DjangoORMStorageBackend')
+
+# ─── Celery ───────────────────────────────────────────────────────────────────
+CELERY_BROKER_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_CACHE_BACKEND = 'default'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_ROUTES = {
+    'apps.monitor.tasks.check_high_priority_portals': {'queue': 'monitoring'},
+    'apps.monitor.tasks.check_standard_portals': {'queue': 'monitoring'},
+    'apps.monitor.tasks.check_low_activity_portals': {'queue': 'monitoring'},
+    'apps.monitor.tasks.portal_check': {'queue': 'monitoring'},
+    'apps.notifications.tasks.dispatch_alert': {'queue': 'notifications'},
+    'apps.notifications.tasks.retry_failed_notifications': {'queue': 'notifications'},
+}
+USE_CELERY = True
+
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    'check_high_priority_portals': {
+        'task': 'apps.monitor.tasks.check_high_priority_portals',
+        'schedule': timedelta(minutes=PORTAL_CHECK_INTERVAL_HIGH_PRIORITY),
+    },
+    'check_standard_portals': {
+        'task': 'apps.monitor.tasks.check_standard_portals',
+        'schedule': timedelta(minutes=PORTAL_CHECK_INTERVAL_MINUTES),
+    },
+    'check_low_activity_portals': {
+        'task': 'apps.monitor.tasks.check_low_activity_portals',
+        'schedule': timedelta(minutes=PORTAL_CHECK_INTERVAL_LOW_ACTIVITY),
+    },
+    'retry_failed_notifications': {
+        'task': 'apps.notifications.tasks.retry_failed_notifications',
+        'schedule': timedelta(hours=1),
+    },
+    'nightly_backup': {
+        'task': 'apps.monitor.tasks.nightly_backup',
+        'schedule': crontab(hour=1, minute=0),
+    },
+    'daily_health_report': {
+        'task': 'apps.monitor.tasks.daily_health_report',
+        'schedule': crontab(hour=8, minute=0),
+    },
+    'cleanup_inactive_users': {
+        'task': 'apps.accounts.tasks.cleanup_inactive_users',
+        'schedule': timedelta(hours=24),
+    },
+}
+
+
+

@@ -2,10 +2,12 @@ import logging
 from django.utils import timezone
 from datetime import timedelta
 from apps.accounts.models import TelegramUser, UserState
+from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
 
+@shared_task
 def cleanup_inactive_users():
     """Mark users as INACTIVE if they have not interacted with the bot for 90 days."""
     logger.info("Starting cleanup of inactive users...")

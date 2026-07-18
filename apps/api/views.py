@@ -82,13 +82,28 @@ class AgencyListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        from apps.agencies.models import Agency
+        from apps.agencies.models import Agency, Portal
         from django.db.models import Prefetch
-        from apps.agencies.models import Portal
 
-        agencies = Agency.objects.filter(is_active=True).prefetch_related(
+        agencies = list(Agency.objects.filter(is_active=True).prefetch_related(
             Prefetch('portals', queryset=Portal.objects.filter(is_active=True).order_by('priority'))
-        )
+        ))
+
+        def get_status_rank(agency):
+            portals = list(agency.portals.all())
+            if not portals:
+                return 2
+            portal = portals[0]
+            status_map = {
+                'ONLINE': 0, 'UP': 0,
+                'MAINTENANCE': 1, 'BLOCKED': 1, 'CAPTCHA': 1, 'RATE_LIMITED': 1,
+            }
+            val = status_map.get(portal.status, 2)
+            if val == 2:
+                val = status_map.get(portal.health_status, 2)
+            return val
+
+        agencies.sort(key=get_status_rank)
 
         paginator = StandardPagination()
         page = paginator.paginate_queryset(agencies, request)
@@ -105,10 +120,16 @@ class AgencyDetailView(APIView):
 
     def get(self, request, slug):
         from apps.agencies.models import Agency
+        from django.db.models import Q
         try:
-            agency = Agency.objects.get(slug__iexact=slug, is_active=True)
-        except Agency.DoesNotExist:
-            return Response({'detail': 'Agency not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+            agency = Agency.objects.filter(
+                Q(slug__iexact=slug) | Q(acronym__iexact=slug),
+                is_active=True
+            ).first()
+            if not agency:
+                return Response({'detail': 'Agency not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        except Exception:
+            return Response({'detail': 'Agency lookup error.'}, status=http_status.HTTP_400_BAD_REQUEST)
         serializer = AgencyDetailSerializer(agency)
         return Response(serializer.data)
 
@@ -143,9 +164,25 @@ class JobListView(APIView):
         if agency_param:
             qs = qs.filter(agency__acronym__iexact=agency_param)
 
+        agency_slug_param = request.query_params.get('agency_slug')
+        if agency_slug_param:
+            qs = qs.filter(agency__slug__iexact=agency_slug_param)
+
         category_param = request.query_params.get('category')
         if category_param:
-            qs = qs.filter(agency__category__iexact=category_param)
+            rev_mapping = {
+                'security': 'SECURITY',
+                'finance': 'FINANCE',
+                'utilities': 'UTILITIES',
+                'health': 'HEALTH',
+                'education': 'EDUCATION',
+                'transport': 'TRANSPORT',
+                'statistics': 'STATISTICS',
+                'judiciary': 'JUDICIARY',
+                'other': 'OTHER',
+            }
+            db_cat = rev_mapping.get(category_param.lower(), category_param)
+            qs = qs.filter(agency__category__iexact=db_cat)
 
         location_param = request.query_params.get('location')
         if location_param:
@@ -207,6 +244,69 @@ class JobDetailView(APIView):
 
         serializer = JobDetailSerializer(alert)
         return Response(serializer.data)
+
+
+class JobVerificationView(APIView):
+    """
+    GET /api/v1/jobs/{ref}/verification/
+    Returns the full verification report for a job: AI classification,
+    confidence score, red flags, confidence factors, and detection timeline.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, ref):
+        from apps.alerts.models import Alert
+
+        pk = _pk_from_ref(ref)
+        if pk is None:
+            return Response({'detail': 'Invalid job reference.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            alert = Alert.objects.select_related('agency', 'portal').get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Job not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        # Confidence factors
+        confidence_factors = [
+            {'label': 'Official government domain', 'passed': alert.trust_score >= 60},
+            {'label': 'AI classification passed', 'passed': alert.ai_classification == 'REAL'},
+            {'label': 'No fraud keywords detected', 'passed': not alert.ai_red_flags},
+            {'label': 'Portal currently accessible', 'passed': bool(alert.portal and alert.portal.status == 'ONLINE')},
+            {'label': 'Recruitment keywords matched', 'passed': alert.trust_score >= 50},
+        ]
+
+        # Detection timeline
+        timeline = [
+            {'time': alert.created_at.strftime('%H:%M'), 'event': 'Recruitment detected by monitoring engine'},
+        ]
+        if alert.portal and alert.portal.last_checked_at:
+            timeline.append({
+                'time': alert.portal.last_checked_at.strftime('%H:%M'),
+                'event': 'Portal last checked',
+            })
+        if alert.is_verified and hasattr(alert, 'verified_at') and alert.verified_at:
+            timeline.append({
+                'time': alert.verified_at.strftime('%H:%M'),
+                'event': 'Manually verified by admin',
+            })
+
+        data = {
+            'ref': f"{alert.pk:04d}-GA",
+            'title': alert.title,
+            'agency_name': alert.agency.name if alert.agency else '',
+            'agency_acronym': alert.agency.acronym if alert.agency else '',
+            'confidence_score': alert.trust_score,
+            'ai_classification': alert.ai_classification or 'UNCERTAIN',
+            'ai_confidence': alert.ai_confidence or 0,
+            'ai_red_flags': alert.ai_red_flags or [],
+            'confidence_factors': confidence_factors,
+            'detection_timeline': timeline,
+            'source_url': alert.source_url or '',
+            'last_monitored': alert.portal.last_checked_at.isoformat() if alert.portal and alert.portal.last_checked_at else None,
+            'is_verified': getattr(alert, 'is_verified', False),
+        }
+
+        return Response(data)
 
 
 # ─── System Status Endpoints ───────────────────────────────────────────────────
@@ -516,3 +616,162 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 class EmailTokenObtainPairView(TokenObtainPairView):
     """Accept email + password instead of username + password."""
     serializer_class = EmailTokenObtainPairSerializer
+
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated
+from apps.api.serializers import (
+    RegisterSerializer, UserProfileSerializer, JobListSerializer
+)
+from apps.accounts.models import WebUser
+from apps.alerts.models import Alert
+
+
+class RegisterView(APIView):
+    """
+    POST /api/auth/register/
+    Creates a new user account and returns access & refresh tokens.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+            }, status=http_status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class LogoutView(APIView):
+    """
+    POST /api/auth/logout/
+    Blacklists the refresh token to log out server-side.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({'detail': 'Refresh token required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response({'detail': 'Successfully logged out.'})
+        except Exception:
+            return Response({'detail': 'Invalid or expired refresh token.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class MeView(APIView):
+    """
+    GET /api/auth/me/ — Get current user profile
+    PATCH /api/auth/me/ — Update profile info
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_web_profile(self, user):
+        profile, _ = WebUser.objects.get_or_create(user=user)
+        return profile
+
+    def get(self, request):
+        profile = self.get_web_profile(request.user)
+        serializer = UserProfileSerializer(profile)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        profile = self.get_web_profile(request.user)
+        serializer = UserProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordChangeView(APIView):
+    """
+    POST /api/auth/password/change/
+    Change password for authenticated user.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+
+        if not old_password or not new_password:
+            return Response(
+                {'detail': 'Both old_password and new_password are required.'},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        user = request.user
+        if not user.check_password(old_password):
+            return Response({'detail': 'Incorrect old password.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 6:
+            return Response({'detail': 'New password must be at least 6 characters.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({'detail': 'Password updated successfully.'})
+
+
+class SavedJobsView(APIView):
+    """
+    GET /api/v1/me/saved-jobs/ — List saved jobs
+    POST /api/v1/me/saved-jobs/ — Save a job {ref: "1234-GA"}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_web_profile(self, user):
+        profile, _ = WebUser.objects.get_or_create(user=user)
+        return profile
+
+    def get(self, request):
+        profile = self.get_web_profile(request.user)
+        saved_jobs = profile.saved_jobs.select_related('agency', 'portal').order_by('-created_at')
+        serializer = JobListSerializer(saved_jobs, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        ref = request.data.get('ref')
+        if not ref:
+            return Response({'detail': 'Job ref required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        pk = _pk_from_ref(ref)
+        if pk is None:
+            return Response({'detail': 'Invalid job ref.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            alert = Alert.objects.get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Job not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        profile = self.get_web_profile(request.user)
+        profile.saved_jobs.add(alert)
+        return Response({'detail': f'Job {ref} saved successfully.'}, status=http_status.HTTP_201_CREATED)
+
+
+class SavedJobDetailView(APIView):
+    """
+    DELETE /api/v1/me/saved-jobs/{ref}/ — Unsave a job
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, ref):
+        pk = _pk_from_ref(ref)
+        if pk is None:
+            return Response({'detail': 'Invalid job ref.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            alert = Alert.objects.get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Job not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        profile, _ = WebUser.objects.get_or_create(user=request.user)
+        profile.saved_jobs.remove(alert)
+        return Response({'detail': f'Job {ref} unsaved successfully.'})
+

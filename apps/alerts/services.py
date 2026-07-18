@@ -234,7 +234,7 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
 
     # 10. Send notifications only for NEW events (not updates)
     if alert.status == AlertStatus.APPROVED and rec_event.status == EventStatus.NEW and alert_created:
-        dispatch_alert(alert.id)
+        dispatch_alert.delay(alert.id)
     elif rec_event.status == EventStatus.UPDATED:
         logger.info(f"Recruitment updated (alert {alert.id}). Update notifications optional.")
 

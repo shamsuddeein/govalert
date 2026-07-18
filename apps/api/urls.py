@@ -6,6 +6,7 @@ Public v1 routes (no auth required):
   GET  /api/v1/agencies/{slug}/
   GET  /api/v1/jobs/
   GET  /api/v1/jobs/{ref}/
+  GET  /api/v1/jobs/{ref}/verification/
   GET  /api/v1/status/
   GET  /api/v1/status/live-feed/
   GET  /api/v1/health/
@@ -32,6 +33,10 @@ app_name = 'api'
 auth_patterns = [
     path('token/', views.EmailTokenObtainPairView.as_view(), name='token_obtain'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('register/', views.RegisterView.as_view(), name='register'),
+    path('logout/', views.LogoutView.as_view(), name='logout'),
+    path('me/', views.MeView.as_view(), name='me'),
+    path('password/change/', views.PasswordChangeView.as_view(), name='password_change'),
 ]
 
 # ── Public v1 ─────────────────────────────────────────────────────────────────
@@ -43,6 +48,11 @@ public_patterns = [
     # Jobs (Alerts)
     path('jobs/', views.JobListView.as_view(), name='job_list'),
     path('jobs/<str:ref>/', views.JobDetailView.as_view(), name='job_detail'),
+    path('jobs/<str:ref>/verification/', views.JobVerificationView.as_view(), name='job_verification'),
+
+    # Saved Jobs (Me)
+    path('me/saved-jobs/', views.SavedJobsView.as_view(), name='saved_jobs'),
+    path('me/saved-jobs/<str:ref>/', views.SavedJobDetailView.as_view(), name='saved_job_detail'),
 
     # System Status
     path('status/', views.SystemStatusView.as_view(), name='system_status'),

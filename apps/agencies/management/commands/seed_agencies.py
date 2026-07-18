@@ -10,6 +10,7 @@ Existing agencies are updated with the latest data from this fixture.
 """
 from django.core.management.base import BaseCommand
 from django.utils.text import slugify
+from django.db.models import Q
 
 
 AGENCIES = [
@@ -454,23 +455,35 @@ class Command(BaseCommand):
             slug = slugify(acronym)
 
             if dry_run:
-                exists = Agency.objects.filter(name=name).exists()
+                exists = Agency.objects.filter(acronym=acronym).exists()
                 action = 'EXISTS' if exists else 'CREATE'
                 self.stdout.write(f'  [{action}] {acronym} — {name}')
                 continue
 
-            agency, created = Agency.objects.update_or_create(
-                name=name,
-                defaults={
-                    'acronym': acronym,
-                    'slug': slug,
-                    'category': data['category'],
-                    'official_domains': data['official_domains'],
-                    'description': data['description'],
-                    'vetted_score': data['vetted_score'],
-                    'is_active': True,
-                }
-            )
+            agency = Agency.objects.filter(Q(acronym__iexact=acronym) | Q(name__iexact=name)).first()
+            if agency:
+                agency.acronym = acronym
+                agency.name = name
+                agency.slug = slug
+                agency.category = data['category']
+                agency.official_domains = data['official_domains']
+                agency.description = data['description']
+                agency.vetted_score = data['vetted_score']
+                agency.is_active = True
+                agency.save()
+                created = False
+            else:
+                agency = Agency.objects.create(
+                    acronym=acronym,
+                    name=name,
+                    slug=slug,
+                    category=data['category'],
+                    official_domains=data['official_domains'],
+                    description=data['description'],
+                    vetted_score=data['vetted_score'],
+                    is_active=True,
+                )
+                created = True
 
             if not created:
                 updated_count += 1

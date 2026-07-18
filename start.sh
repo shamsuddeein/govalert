@@ -47,3 +47,24 @@ PID=$!
 echo $PID > runserver.pid
 echo "GovAlert started in background with PID $PID."
 echo "Logs are being written to runserver.log"
+
+# Clean up old celery pids
+rm -f celery.pids
+
+# Start Celery workers and beat
+echo "Starting Celery workers (monitoring, notifications, ai)..."
+nohup celery -A config worker -Q monitoring -c 4 -n monitor@%h --loglevel=info > celery_monitor.log 2>&1 &
+echo $! >> celery.pids
+
+nohup celery -A config worker -Q notifications -c 8 -n notify@%h --loglevel=info > celery_notifications.log 2>&1 &
+echo $! >> celery.pids
+
+nohup celery -A config worker -Q ai -c 2 -n ai@%h --loglevel=info > celery_ai.log 2>&1 &
+echo $! >> celery.pids
+
+echo "Starting Celery beat..."
+nohup celery -A config beat -l info > celery_beat.log 2>&1 &
+echo $! >> celery.pids
+
+echo "Celery services started. PIDs saved to celery.pids"
+
