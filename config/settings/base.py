@@ -13,8 +13,8 @@ TESTING = 'test' in sys.argv or 'pytest' in sys.modules or any('pytest' in arg f
 # ─── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# ─── Security — read from env, no defaults for critical secrets
-SECRET_KEY = config('SECRET_KEY')  # No default: crash loudly on misconfiguration
+# ─── Security — read from env, with build-safe default for static collection step
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-build-time-placeholder-do-not-use-in-prod')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 
