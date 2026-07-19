@@ -1357,7 +1357,6 @@ class CustomAdminPortalHistoryView(APIView):
         except Portal.DoesNotExist:
             return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
-        from datetime import timedelta
         cutoff = timezone.now() - timedelta(days=30)
         snapshots = Snapshot.objects.filter(
             portal=portal,
@@ -1410,7 +1409,6 @@ class CustomAdminSystemHealthView(APIView):
             success_rate_today = round((successful_checks_today / total_checks_today) * 100, 2)
         else:
             # Fallback to 24h window if no checks yet today
-            from datetime import timedelta
             snaps_24h = Snapshot.objects.filter(created_at__gte=now - timedelta(hours=24))
             if snaps_24h.exists():
                 total_checks_today = snaps_24h.count()
