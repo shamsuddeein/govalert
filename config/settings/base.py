@@ -84,41 +84,17 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 # ─── Database ──────────────────────────────────────────────────────────────────
-import urllib.parse
+import dj_database_url
 
-database_url = config('DATABASE_URL', default='')
-db_host = config('DB_HOST', default=config('PGHOST', default=''))
+default_sqlite_url = f"sqlite:///{BASE_DIR / 'users.db'}"
 
-if database_url:
-    url = urllib.parse.urlparse(database_url)
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': url.path[1:] if url.path else '',
-            'USER': url.username or '',
-            'PASSWORD': url.password or '',
-            'HOST': url.hostname or '',
-            'PORT': str(url.port or 5432),
-        }
-    }
-elif db_host:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DB_NAME', default=config('PGDATABASE', default='govalert_db')),
-            'USER': config('DB_USER', default=config('PGUSER', default='postgres')),
-            'PASSWORD': config('DB_PASSWORD', default=config('PGPASSWORD', default='')),
-            'HOST': db_host,
-            'PORT': config('DB_PORT', default=config('PGPORT', default='5432')),
-        }
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'users.db',
-        }
-    }
+DATABASES = {
+    'default': dj_database_url.config(
+        default=config('DATABASE_URL', default=default_sqlite_url),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
 
 # ─── Cache ─────────────────────────────────────────────────────────────────────
 redis_url = config('REDIS_URL', default='')
