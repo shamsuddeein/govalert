@@ -7,11 +7,11 @@ from .base import *  # noqa
 
 DEBUG = False
 
-# Explicit ALLOWED_HOSTS in production — no default, crash on misconfiguration.
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv())  # noqa: F405 — config/Csv imported via base *
+# ALLOWED_HOSTS in production — defaults to wildcard for Railway/Render container domains.
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())  # noqa: F405 — config/Csv imported via base *
 
 # ─── Security Headers ──────────────────────────────────────────────────────────
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
