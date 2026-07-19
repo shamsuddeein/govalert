@@ -803,29 +803,35 @@ class CustomAdminLoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        username = request.data.get('username', '').strip()
+        identifier = (request.data.get('username') or request.data.get('email') or '').strip()
         password = request.data.get('password', '')
 
-        if not username or not password:
+        if not identifier or not password:
             return Response(
-                {'detail': 'Username and password are required.'},
+                {'detail': 'Username/email and password are required.'},
                 status=http_status.HTTP_400_BAD_REQUEST
             )
 
         from django.contrib.auth.models import User
         from django.db.models import Q
-        user_obj = User.objects.filter(Q(username__iexact=username) | Q(email__iexact=username)).first()
+        user_obj = User.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier)).first()
 
-        if user_obj and not user_obj.is_staff:
+        if not user_obj:
+            return Response(
+                {'detail': 'Invalid email/username or password.'},
+                status=http_status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not user_obj.is_staff:
             return Response(
                 {'detail': 'Staff credentials required to access the admin portal.'},
                 status=http_status.HTTP_403_FORBIDDEN
             )
 
-        user = authenticate(request, username=username, password=password)
+        user = authenticate(request, username=user_obj.username, password=password)
         if not user:
             return Response(
-                {'detail': 'Invalid username or password.'},
+                {'detail': 'Invalid email/username or password.'},
                 status=http_status.HTTP_401_UNAUTHORIZED
             )
 
