@@ -13,8 +13,8 @@ TESTING = 'test' in sys.argv or 'pytest' in sys.modules or any('pytest' in arg f
 # ─── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# ─── Security ──────────────────────────────────────────────────────────────────
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key-for-collectstatic')
+# ─── Security — read from env, no defaults for critical secrets
+SECRET_KEY = config('SECRET_KEY')  # No default: crash loudly on misconfiguration
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 
@@ -112,7 +112,7 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # ─── Sessions ──────────────────────────────────────────────────────────────────
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Stored in SQLite
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # ─── DRF ──────────────────────────────────────────────────────────────────
 # Public endpoints (agencies, jobs, status) use AllowAny — no auth needed.
@@ -129,6 +129,16 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
+    # Rate limiting: 60 requests/minute for anonymous callers.
+    # Prevents API scraping and abuse of the public endpoints.
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/min',
+        'user': '300/min',
+    },
 }
 
 # ─── JWT ───────────────────────────────────────────────────────────────────────
@@ -154,10 +164,9 @@ CORS_ALLOWED_ORIGINS = config(
     ]),
     cast=Csv()
 )
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    # Matches all Vercel preview URLs: https://govalert-*.vercel.app
-    r'^https://govalert-[a-z0-9-]+\.vercel\.app$',
-]
+# IMPORTANT: Do not add CORS_ALLOWED_ORIGIN_REGEXES with CORS_ALLOW_CREDENTIALS=True.
+# A wildcard regex allows any Vercel preview deploy to make credentialed requests.
+# To allow specific preview URLs, add them explicitly to CORS_ALLOWED_ORIGINS via env var.
 CORS_ALLOW_CREDENTIALS = True
 FRONTEND_URL = config('FRONTEND_URL', default='https://govalert-henna.vercel.app')
 
@@ -307,6 +316,18 @@ CELERY_BEAT_SCHEDULE = {
     'cleanup_inactive_users': {
         'task': 'apps.accounts.tasks.cleanup_inactive_users',
         'schedule': timedelta(hours=24),
+    },
+    # Aggregate yesterday's Snapshots into PortalHealthLog. Runs at 00:30 so
+    # yesterday's data is fully complete before aggregation begins.
+    'aggregate_portal_health_logs': {
+        'task': 'apps.monitor.tasks.aggregate_portal_health_logs',
+        'schedule': crontab(hour=0, minute=30),
+    },
+    # Purge raw_content from Snapshots >30 days old to control DB size.
+    # Rows are retained (hash + status preserved), only page text is cleared.
+    'purge_old_snapshot_content': {
+        'task': 'apps.monitor.tasks.purge_old_snapshot_content',
+        'schedule': crontab(hour=3, minute=0),
     },
 }
 

@@ -22,6 +22,16 @@ class IsAdminUser(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
+class IsStaffUser(BasePermission):
+    """
+    Grants access only to authenticated users with is_staff=True.
+    Required for all GovAlert custom admin API endpoints.
+    """
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_staff)
+
+
+
 class IsReadOnly(BasePermission):
     """
     Allows only GET, HEAD, OPTIONS requests.

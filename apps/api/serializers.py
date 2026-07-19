@@ -124,7 +124,9 @@ class AgencyDetailSerializer(AgencyListSerializer):
         return float(portal.uptime_percentage)
 
     def get_last_update(self, obj):
-        alert = Alert.objects.filter(agency=obj).order_by('-created_at').first()
+        alert = Alert.objects.filter(
+            agency=obj, status=AlertStatus.APPROVED
+        ).order_by('-created_at').first()
         return alert.created_at.isoformat() if alert else None
 
     def get_recruitment_history(self, obj):
@@ -463,4 +465,127 @@ class UserProfileSerializer(serializers.ModelSerializer):
             instance.categories_of_interest = validated_data['categories_of_interest']
         instance.save()
         return instance
+
+
+class AdminAlertDetailSerializer(serializers.ModelSerializer):
+    agency = serializers.SerializerMethodField()
+    portal = serializers.SerializerMethodField()
+    agency_name = serializers.CharField(source='agency.name', read_only=True, default='')
+    agency_acronym = serializers.CharField(source='agency.acronym', read_only=True, default='')
+    portal_name = serializers.CharField(source='portal.name', read_only=True, default='')
+    portal_url = serializers.CharField(source='portal.url', read_only=True, default='')
+    verified_by = serializers.SerializerMethodField()
+    trust_score_overridden_by = serializers.SerializerMethodField()
+    recruitment_event = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Alert
+        fields = [
+            'id', 'title', 'agency', 'portal', 'agency_name', 'agency_acronym',
+            'portal_name', 'portal_url', 'deadline', 'positions',
+            'requirements', 'source_url', 'content_excerpt', 'trust_score',
+            'trust_score_overridden_by', 'trust_score_overridden_at',
+            'ai_classification', 'ai_confidence', 'ai_red_flags', 'status',
+            'is_verified', 'verified_by', 'verified_at', 'admin_notes',
+            'report_count', 'created_at', 'recruitment_event',
+        ]
+
+    def get_agency(self, obj):
+        if obj.agency:
+            return {'name': obj.agency.name, 'acronym': obj.agency.acronym}
+        return None
+
+    def get_portal(self, obj):
+        if obj.portal:
+            return {'name': obj.portal.name, 'url': obj.portal.url}
+        return None
+
+    def get_verified_by(self, obj):
+        return obj.verified_by.username if obj.verified_by else None
+
+    def get_trust_score_overridden_by(self, obj):
+        return obj.trust_score_overridden_by.username if obj.trust_score_overridden_by else None
+
+    def get_recruitment_event(self, obj):
+        if obj.recruitment_event:
+            return {
+                'event_id': obj.recruitment_event.event_id,
+                'fingerprint': obj.recruitment_event.fingerprint,
+                'event_type': obj.recruitment_event.event_type,
+            }
+        return None
+
+
+# ─── Custom DRF Admin Serializers for Agency and Portal ───────────────────────
+
+class AdminAgencySerializer(serializers.ModelSerializer):
+    portal_count = serializers.SerializerMethodField()
+    alert_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Agency
+        fields = [
+            'id', 'name', 'acronym', 'slug', 'official_domains', 'logo_url',
+            'category', 'is_active', 'description', 'vetted_score',
+            'avg_confidence_score', 'false_positives', 'scam_domains_blocked',
+            'subscriber_count', 'total_alerts_sent', 'portal_count',
+            'alert_count', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'slug', 'avg_confidence_score', 'subscriber_count',
+            'total_alerts_sent', 'created_at', 'updated_at',
+        ]
+
+    def get_portal_count(self, obj):
+        return obj.portals.count()
+
+    def get_alert_count(self, obj):
+        return obj.alerts.count()
+
+
+class SnapshotSerializer(serializers.ModelSerializer):
+    timestamp = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = Snapshot
+        fields = [
+            'id', 'portal', 'content_hash', 'status_code', 'response_time_ms',
+            'scrape_method_used', 'has_change', 'triggered_alert',
+            'created_at', 'timestamp',
+        ]
+
+
+class AdminPortalSerializer(serializers.ModelSerializer):
+    agency_name = serializers.CharField(source='agency.name', read_only=True, default='')
+    agency_acronym = serializers.CharField(source='agency.acronym', read_only=True, default='')
+
+    class Meta:
+        model = Portal
+        fields = [
+            'id', 'agency', 'agency_name', 'agency_acronym', 'name', 'url',
+            'scrape_method', 'check_interval_minutes', 'poll_interval',
+            'priority', 'is_active', 'health_status', 'status', 'location_state',
+            'last_checked_at', 'last_successful_check_at', 'last_change_detected_at',
+            'consecutive_failures', 'uptime_percentage', 'confidence',
+            'response_time_ms', 'tags', 'country', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'health_status', 'status', 'last_checked_at', 'last_successful_check_at',
+            'last_change_detected_at', 'consecutive_failures', 'uptime_percentage',
+            'confidence', 'response_time_ms', 'created_at', 'updated_at',
+        ]
+
+
+class AdminPortalDetailSerializer(AdminPortalSerializer):
+    recent_snapshots = serializers.SerializerMethodField()
+
+    class Meta(AdminPortalSerializer.Meta):
+        fields = AdminPortalSerializer.Meta.fields + ['recent_snapshots']
+
+    def get_recent_snapshots(self, obj):
+        snapshots = obj.snapshots.order_by('-created_at')[:10]
+        return SnapshotSerializer(snapshots, many=True).data
+
+
+
 

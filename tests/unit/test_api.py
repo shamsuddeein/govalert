@@ -17,12 +17,13 @@ def test_agency_list_api():
     url = reverse('api:agency_list')
     response = client.get(url)
     assert response.status_code == 200
-    assert len(response.data) == 1
-    assert response.data[0]['acronym'] == 'NCS'
+    results = response.data.get('results', response.data)  # handle paginated or plain list
+    assert len(results) == 1
+    assert results[0]['acronym'] == 'NCS'
 
 
 @pytest.mark.django_db
-def test_latest_alerts_api():
+def test_job_list_api():
     client = APIClient()
     agency = Agency.objects.create(
         name="Nigeria Customs Service",
@@ -36,11 +37,59 @@ def test_latest_alerts_api():
         status=AlertStatus.APPROVED,
         event_type=EventType.RECRUITMENT_OPEN
     )
-    url = reverse('api:latest_alerts')
+    url = reverse('api:job_list')
     response = client.get(url)
     assert response.status_code == 200
-    assert len(response.data) == 1
-    assert response.data[0]['title'] == 'Customs Recruitment 2025'
+    results = response.data.get('results', response.data)
+    assert len(results) == 1
+    assert results[0]['title'] == 'Customs Recruitment 2025'
+
+
+@pytest.mark.django_db
+def test_pending_alerts_excluded_from_public_api():
+    """
+    REGRESSION TEST for the PENDING alert exposure bug.
+    Unapproved (PENDING) alerts must NEVER appear in the public /api/v1/jobs/ list
+    or be accessible via /api/v1/jobs/{ref}/.
+    """
+    client = APIClient()
+    agency = Agency.objects.create(
+        name="Nigeria Customs Service",
+        acronym="NCS",
+        official_domains=["customs.gov.ng"],
+        is_active=True
+    )
+    approved = Alert.objects.create(
+        agency=agency,
+        title="Approved Recruitment 2025",
+        status=AlertStatus.APPROVED,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+    pending = Alert.objects.create(
+        agency=agency,
+        title="Pending (Unreviewed) Alert",
+        status=AlertStatus.PENDING,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+
+    # List endpoint must return exactly 1 result (the approved one)
+    list_url = reverse('api:job_list')
+    response = client.get(list_url)
+    assert response.status_code == 200
+    results = response.data.get('results', response.data)
+    assert len(results) == 1, (
+        f"Expected 1 result, got {len(results)}: "
+        "PENDING alert is leaking into the public job list"
+    )
+    assert results[0]['title'] == 'Approved Recruitment 2025'
+
+    # Detail endpoint for PENDING alert must return 404, not the alert data
+    pending_ref = f"{pending.pk:04d}-GA"
+    detail_url = reverse('api:job_detail', kwargs={'ref': pending_ref})
+    detail_response = client.get(detail_url)
+    assert detail_response.status_code == 404, (
+        "PENDING alert is accessible via the detail endpoint — must return 404"
+    )
 
 
 from unittest.mock import patch
@@ -74,7 +123,7 @@ def test_health_api():
     assert 'database' in response.data
     assert 'telegram' in response.data
     assert 'scheduler' in response.data
-    assert 'scrapers' in response.data
+    assert 'active_scrapers' in response.data  # key is 'active_scrapers', not 'scrapers'
 
 
 @pytest.mark.django_db

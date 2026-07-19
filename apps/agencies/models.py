@@ -259,6 +259,8 @@ class Portal(models.Model):
         indexes = [
             models.Index(fields=['is_active', 'status'], name='idx_portals_active_status'),
             models.Index(fields=['agency', 'is_active'], name='idx_portals_agency_active'),
+            # Monitoring loop query: filter(is_active=True, priority='HIGH') runs every 5 min.
+            models.Index(fields=['is_active', 'priority'], name='idx_portals_active_priority'),
         ]
 
     def __str__(self):
@@ -266,9 +268,14 @@ class Portal(models.Model):
 
     @property
     def is_up(self) -> bool:
-        return self.status in [PortalStatus.ONLINE, PortalStatus.UP]
+        # Use health_status (current field). status is deprecated but still written in sync.
+        return self.health_status in [HealthStatus.ONLINE]
 
     @property
     def needs_check(self) -> bool:
         """True if this portal is active and eligible for a new check."""
-        return self.is_active and self.status not in [PortalStatus.MAINTENANCE, PortalStatus.PAUSED]
+        return self.is_active and self.health_status not in [
+            HealthStatus.MAINTENANCE,
+            # PAUSED and DOWN are deprecated PortalStatus values that don't exist
+            # in HealthStatus, so checking health_status is sufficient here.
+        ]

@@ -34,11 +34,22 @@ def test_create_alert_from_scrape_fallback(mock_send, mock_ai):
     alert_real = create_alert_from_scrape(portal, content_real, matched_data)
 
     assert alert_real is not None
-    assert alert_real.ai_classification == 'REAL'
-    assert alert_real.ai_confidence == 75
+    # When AI is unavailable, the rule engine fallback must produce UNCERTAIN/PENDING.
+    # The rule engine is triage only — it must never auto-approve.
+    assert alert_real.ai_classification == 'UNCERTAIN', (
+        "Fallback must produce UNCERTAIN, not REAL. "
+        "REAL classification is only valid from a genuine AI call."
+    )
+    assert alert_real.ai_confidence == 40, (
+        "Fallback confidence must be 40, not 75. "
+        "A high confidence score from the rule engine would bypass human review."
+    )
     assert alert_real.positions == 'Customs Inspector'
     assert alert_real.deadline == '2025-12-31'
-    assert alert_real.status == AlertStatus.APPROVED
+    assert alert_real.status == AlertStatus.PENDING, (
+        "Fallback must produce PENDING status. "
+        "Auto-approval is only valid when a genuine AI call returns REAL."
+    )
 
     # Clear database state to prevent the second call from being flagged as a duplicate
     from apps.alerts.models import RecruitmentEvent
@@ -49,6 +60,8 @@ def test_create_alert_from_scrape_fallback(mock_send, mock_ai):
     alert_fraud = create_alert_from_scrape(portal, content_fraud, matched_data)
 
     assert alert_fraud is not None
-    assert alert_fraud.ai_classification == 'SUSPICIOUS'
-    assert alert_fraud.ai_confidence == 80
+    # Fraud keywords detected via rule engine — still UNCERTAIN (not SUSPICIOUS)
+    # because the rule engine cannot assign SUSPICIOUS confidently without AI.
+    assert alert_fraud.ai_classification == 'UNCERTAIN'
+    assert alert_fraud.ai_confidence == 30
     assert 'FRAUD_KEYWORDS_DETECTED' in alert_fraud.ai_red_flags

@@ -29,8 +29,10 @@ class TelegramWebhookView(View):
         secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
         expected = settings.TELEGRAM_WEBHOOK_SECRET
 
-        if expected and not hmac.compare_digest(secret, expected):
-            logger.warning("Rejected webhook request: invalid secret token.")
+        # Fail hard if secret is not configured — an empty secret would allow
+        # any caller to bypass validation and inject fake Telegram updates.
+        if not expected or not hmac.compare_digest(secret, expected):
+            logger.warning("Rejected webhook request: invalid or missing secret token.")
             return HttpResponse(status=403)
 
         # ── Parse the Update ──────────────────────────────────────────────────

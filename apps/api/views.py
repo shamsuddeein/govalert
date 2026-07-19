@@ -156,7 +156,7 @@ class JobListView(APIView):
         from django.db.models import Q
 
         qs = Alert.objects.filter(
-            status__in=[AlertStatus.APPROVED, AlertStatus.PENDING]
+            status=AlertStatus.APPROVED
         ).select_related('agency', 'portal').order_by('-created_at')
 
         # ── Filters ────────────────────────────────────────────────────────────
@@ -231,14 +231,16 @@ class JobDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, ref):
-        from apps.alerts.models import Alert
+        from apps.alerts.models import Alert, AlertStatus
 
         pk = _pk_from_ref(ref)
         if pk is None:
             return Response({'detail': 'Invalid job reference.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         try:
-            alert = Alert.objects.select_related('agency', 'portal', 'recruitment_event').get(pk=pk)
+            alert = Alert.objects.select_related('agency', 'portal', 'recruitment_event').get(
+                pk=pk, status=AlertStatus.APPROVED
+            )
         except Alert.DoesNotExist:
             return Response({'detail': 'Job not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
@@ -255,14 +257,16 @@ class JobVerificationView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, ref):
-        from apps.alerts.models import Alert
+        from apps.alerts.models import Alert, AlertStatus
 
         pk = _pk_from_ref(ref)
         if pk is None:
             return Response({'detail': 'Invalid job reference.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         try:
-            alert = Alert.objects.select_related('agency', 'portal').get(pk=pk)
+            alert = Alert.objects.select_related('agency', 'portal').get(
+                pk=pk, status=AlertStatus.APPROVED
+            )
         except Alert.DoesNotExist:
             return Response({'detail': 'Job not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
@@ -774,4 +778,762 @@ class SavedJobDetailView(APIView):
         profile, _ = WebUser.objects.get_or_create(user=request.user)
         profile.saved_jobs.remove(alert)
         return Response({'detail': f'Job {ref} unsaved successfully.'})
+
+
+# ─── Custom DRF Admin API ──────────────────────────────────────────────────────
+
+from core.permissions import IsStaffUser
+from apps.api.serializers import (
+    AdminAlertDetailSerializer, AdminAgencySerializer,
+    SnapshotSerializer, AdminPortalSerializer, AdminPortalDetailSerializer,
+)
+from apps.alerts.models import Alert, AlertStatus
+from apps.agencies.models import Agency, Portal
+from apps.monitor.models import Snapshot, PortalHealthLog
+from django.contrib.auth import authenticate
+
+
+class CustomAdminLoginView(APIView):
+    """
+    POST /api/v1/admin/auth/login/
+    Validates auth.User with is_staff=True.
+    Returns access & refresh tokens + user info.
+    If user exists but is_staff=False, returns 403 Forbidden.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get('username', '').strip()
+        password = request.data.get('password', '')
+
+        if not username or not password:
+            return Response(
+                {'detail': 'Username and password are required.'},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        from django.contrib.auth.models import User
+        from django.db.models import Q
+        user_obj = User.objects.filter(Q(username__iexact=username) | Q(email__iexact=username)).first()
+
+        if user_obj and not user_obj.is_staff:
+            return Response(
+                {'detail': 'Staff credentials required to access the admin portal.'},
+                status=http_status.HTTP_403_FORBIDDEN
+            )
+
+        user = authenticate(request, username=username, password=password)
+        if not user:
+            return Response(
+                {'detail': 'Invalid username or password.'},
+                status=http_status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not user.is_staff:
+            return Response(
+                {'detail': 'Staff credentials required to access the admin portal.'},
+                status=http_status.HTTP_403_FORBIDDEN
+            )
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'is_superuser': user.is_superuser,
+            }
+        })
+
+
+class CustomAdminMeView(APIView):
+    """
+    GET /api/v1/admin/auth/me/
+    Returns current authenticated admin user's info.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser,
+        })
+
+
+class CustomAdminAlertListView(APIView):
+    """
+    GET /api/v1/admin/alerts/
+    List alerts with full detail for admins.
+    Supports ?status=PENDING|APPROVED|REJECTED|HELD (default: PENDING)
+    Supports ?agency={acronym}
+    Supports ?ai_classification=REAL|FAKE|UNCERTAIN
+    Supports ?ordering=-created_at, -ai_confidence, -trust_score, etc.
+    Default ordering for PENDING: lowest ai_confidence first (ai_confidence asc).
+    Paginated 20 per page.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        status_param = request.query_params.get('status', 'PENDING').strip()
+        agency_param = request.query_params.get('agency', '').strip()
+        ai_class_param = request.query_params.get('ai_classification', '').strip()
+        ordering_param = request.query_params.get('ordering', '').strip()
+
+        qs = Alert.objects.select_related('agency', 'portal', 'recruitment_event', 'verified_by', 'trust_score_overridden_by').all()
+
+        # Status filter
+        if status_param.upper() != 'ALL':
+            qs = qs.filter(status__iexact=status_param)
+
+        # Agency filter
+        if agency_param:
+            qs = qs.filter(agency__acronym__iexact=agency_param)
+
+        # AI Classification filter
+        if ai_class_param:
+            qs = qs.filter(ai_classification__iexact=ai_class_param)
+
+        # Ordering
+        if ordering_param:
+            qs = qs.order_by(ordering_param)
+        elif status_param.upper() == 'PENDING':
+            # Default sorting for PENDING queue: lowest ai_confidence first (needs most judgment)
+            qs = qs.order_by('ai_confidence', '-created_at')
+        else:
+            qs = qs.order_by('-created_at')
+
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = AdminAlertDetailSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class CustomAdminAlertApproveView(APIView):
+    """
+    POST /api/v1/admin/alerts/{id}/approve/
+    Body: {"admin_notes": str (optional)}
+    Sets status='APPROVED', is_verified=True, verified_by=user, verified_at=now.
+    Appends admin_notes if provided.
+    Triggers downstream dispatch.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, pk):
+        try:
+            alert = Alert.objects.select_related('agency', 'portal', 'recruitment_event').get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Alert not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        new_notes = request.data.get('admin_notes', '').strip()
+        now = timezone.now()
+
+        alert.status = AlertStatus.APPROVED
+        alert.is_verified = True
+        alert.verified_by = request.user
+        alert.verified_at = now
+
+        if new_notes:
+            timestamp_str = now.strftime('%Y-%m-%d %H:%M')
+            formatted_note = f"[{timestamp_str} - {request.user.username}]: {new_notes}"
+            if alert.admin_notes:
+                alert.admin_notes = f"{alert.admin_notes}\n{formatted_note}"
+            else:
+                alert.admin_notes = formatted_note
+
+        alert.save(update_fields=['status', 'is_verified', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
+
+        # Trigger downstream publishing
+        from apps.notifications.tasks import dispatch_alert
+        try:
+            dispatch_alert.delay(alert.id)
+        except Exception:
+            try:
+                dispatch_alert(alert.id)
+            except Exception as exc:
+                logger.warning(f"Failed to trigger alert dispatch: {exc}")
+
+        serializer = AdminAlertDetailSerializer(alert)
+        return Response({
+            'detail': 'Alert approved and queued for dispatch.',
+            'alert': serializer.data
+        })
+
+
+class CustomAdminAlertRejectView(APIView):
+    """
+    POST /api/v1/admin/alerts/{id}/reject/
+    Body: {"admin_notes": str (required)}
+    Sets status='REJECTED', verified_by=user, verified_at=now.
+    Increments agency.false_positives if ai_classification was 'REAL'.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, pk):
+        try:
+            alert = Alert.objects.select_related('agency', 'portal', 'recruitment_event').get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Alert not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        new_notes = request.data.get('admin_notes', '').strip()
+        if not new_notes:
+            return Response(
+                {'detail': 'admin_notes is required when rejecting an alert.'},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        now = timezone.now()
+        alert.status = AlertStatus.REJECTED
+        alert.verified_by = request.user
+        alert.verified_at = now
+
+        timestamp_str = now.strftime('%Y-%m-%d %H:%M')
+        formatted_note = f"[{timestamp_str} - {request.user.username}]: {new_notes}"
+        if alert.admin_notes:
+            alert.admin_notes = f"{alert.admin_notes}\n{formatted_note}"
+        else:
+            alert.admin_notes = formatted_note
+
+        # Increment false positives if AI was REAL
+        if alert.ai_classification == 'REAL':
+            from django.db.models import F
+            from apps.agencies.models import Agency
+            Agency.objects.filter(pk=alert.agency_id).update(false_positives=F('false_positives') + 1)
+
+        alert.save(update_fields=['status', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
+
+        serializer = AdminAlertDetailSerializer(alert)
+        return Response({
+            'detail': 'Alert rejected.',
+            'alert': serializer.data
+        })
+
+
+class CustomAdminAlertHoldView(APIView):
+    """
+    POST /api/v1/admin/alerts/{id}/hold/
+    Body: {"admin_notes": str (optional)}
+    Sets status='HELD', verified_by=user, verified_at=now.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, pk):
+        try:
+            alert = Alert.objects.select_related('agency', 'portal', 'recruitment_event').get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Alert not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        new_notes = request.data.get('admin_notes', '').strip()
+        now = timezone.now()
+
+        alert.status = AlertStatus.HELD
+        alert.verified_by = request.user
+        alert.verified_at = now
+
+        if new_notes:
+            timestamp_str = now.strftime('%Y-%m-%d %H:%M')
+            formatted_note = f"[{timestamp_str} - {request.user.username}]: {new_notes}"
+            if alert.admin_notes:
+                alert.admin_notes = f"{alert.admin_notes}\n{formatted_note}"
+            else:
+                alert.admin_notes = formatted_note
+
+        alert.save(update_fields=['status', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
+
+        serializer = AdminAlertDetailSerializer(alert)
+        return Response({
+            'detail': 'Alert marked as HELD for review.',
+            'alert': serializer.data
+        })
+
+
+class CustomAdminAlertUpdateView(APIView):
+    """
+    PATCH /api/v1/admin/alerts/{id}/
+    Body: {"admin_notes": str (optional), "trust_score": int (optional, 0-100)}
+    Allows editing notes and manually overriding trust_score with audit trail.
+    """
+    permission_classes = [IsStaffUser]
+
+    def patch(self, request, pk):
+        try:
+            alert = Alert.objects.select_related('agency', 'portal', 'recruitment_event').get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Alert not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        update_fields = ['updated_at']
+
+        if 'admin_notes' in request.data:
+            new_notes = str(request.data['admin_notes']).strip()
+            alert.admin_notes = new_notes
+            update_fields.append('admin_notes')
+
+        if 'trust_score' in request.data:
+            try:
+                score = int(request.data['trust_score'])
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'trust_score must be an integer between 0 and 100.'},
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+            if not (0 <= score <= 100):
+                return Response(
+                    {'detail': 'trust_score must be between 0 and 100.'},
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+
+            if score != alert.trust_score:
+                alert.trust_score = score
+                alert.trust_score_overridden_by = request.user
+                alert.trust_score_overridden_at = timezone.now()
+                update_fields.extend(['trust_score', 'trust_score_overridden_by', 'trust_score_overridden_at'])
+
+        alert.save(update_fields=list(set(update_fields)))
+        serializer = AdminAlertDetailSerializer(alert)
+        return Response(serializer.data)
+
+
+class CustomAdminAlertStatsView(APIView):
+    """
+    GET /api/v1/admin/alerts/stats/
+    Returns queue status metrics: pending_count, approved_today, rejected_today,
+    avg_review_time_minutes, oldest_pending_age_hours.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        now = timezone.now()
+        today = now.date()
+
+        pending_count = Alert.objects.filter(status=AlertStatus.PENDING).count()
+        approved_today = Alert.objects.filter(status=AlertStatus.APPROVED, verified_at__date=today).count()
+        rejected_today = Alert.objects.filter(status=AlertStatus.REJECTED, verified_at__date=today).count()
+
+        reviewed_alerts = Alert.objects.filter(verified_at__isnull=False).only('created_at', 'verified_at')[:200]
+        if reviewed_alerts.exists():
+            durations = [(a.verified_at - a.created_at).total_seconds() for a in reviewed_alerts if a.verified_at]
+            avg_seconds = sum(durations) / len(durations) if durations else 0.0
+            avg_review_time_minutes = round(avg_seconds / 60.0, 1)
+        else:
+            avg_review_time_minutes = 0.0
+
+        oldest_pending = Alert.objects.filter(status=AlertStatus.PENDING).order_by('created_at').first()
+        if oldest_pending:
+            oldest_pending_age_hours = round((now - oldest_pending.created_at).total_seconds() / 3600.0, 1)
+        else:
+            oldest_pending_age_hours = 0.0
+
+        return Response({
+            'pending_count': pending_count,
+            'approved_today': approved_today,
+            'rejected_today': rejected_today,
+            'avg_review_time_minutes': avg_review_time_minutes,
+            'oldest_pending_age_hours': oldest_pending_age_hours,
+        })
+
+
+# ─── Custom Admin Agency Endpoints ─────────────────────────────────────────────
+
+class CustomAdminAgencyListCreateView(APIView):
+    """
+    GET  /api/v1/admin/agencies/ — list all agencies (including inactive)
+    POST /api/v1/admin/agencies/ — create new agency
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        agencies = Agency.objects.all().order_by('acronym')
+        
+        category_param = request.query_params.get('category', '').strip()
+        if category_param:
+            agencies = agencies.filter(category__iexact=category_param)
+            
+        search_param = request.query_params.get('search', '').strip()
+        if search_param:
+            agencies = agencies.filter(
+                models.Q(name__icontains=search_param) |
+                models.Q(acronym__icontains=search_param)
+            )
+
+        serializer = AdminAgencySerializer(agencies, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = AdminAgencySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=http_status.HTTP_201_CREATED)
+
+
+class CustomAdminAgencyDetailView(APIView):
+    """
+    GET    /api/v1/admin/agencies/{id}/ — full agency detail
+    PATCH  /api/v1/admin/agencies/{id}/ — edit any field
+    DELETE /api/v1/admin/agencies/{id}/ — soft delete (set is_active=False)
+    """
+    permission_classes = [IsStaffUser]
+
+    def get_object(self, pk):
+        try:
+            return Agency.objects.get(pk=pk)
+        except Agency.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        agency = self.get_object(pk)
+        if not agency:
+            return Response({'detail': 'Agency not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        serializer = AdminAgencySerializer(agency)
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        agency = self.get_object(pk)
+        if not agency:
+            return Response({'detail': 'Agency not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        serializer = AdminAgencySerializer(agency, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, pk):
+        agency = self.get_object(pk)
+        if not agency:
+            return Response({'detail': 'Agency not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        
+        # Soft delete — never hard delete an agency with attached alerts/portals
+        agency.is_active = False
+        agency.save(update_fields=['is_active', 'updated_at'])
+        return Response({
+            'detail': 'Agency deactivated (soft-deleted).',
+            'id': agency.id,
+            'is_active': False,
+        })
+
+
+# ─── Custom Admin Portal Endpoints ─────────────────────────────────────────────
+
+class CustomAdminPortalListCreateView(APIView):
+    """
+    GET  /api/v1/admin/portals/ — list all, filterable by agency & health_status
+    POST /api/v1/admin/portals/ — create new portal for an agency
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        portals = Portal.objects.select_related('agency').all().order_by('agency__acronym', 'name')
+
+        agency_param = request.query_params.get('agency', '').strip()
+        if agency_param:
+            if agency_param.isdigit():
+                portals = portals.filter(agency_id=int(agency_param))
+            else:
+                portals = portals.filter(
+                    models.Q(agency__acronym__iexact=agency_param) |
+                    models.Q(agency__slug__iexact=agency_param)
+                )
+
+        health_param = request.query_params.get('health_status', '').strip() or request.query_params.get('status', '').strip()
+        if health_param:
+            portals = portals.filter(
+                models.Q(health_status__iexact=health_param) |
+                models.Q(status__iexact=health_param)
+            )
+
+        serializer = AdminPortalSerializer(portals, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = AdminPortalSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=http_status.HTTP_201_CREATED)
+
+
+class CustomAdminPortalDetailView(APIView):
+    """
+    GET    /api/v1/admin/portals/{id}/ — full detail including last 10 snapshots
+    PATCH  /api/v1/admin/portals/{id}/ — edit url, poll_interval, priority, is_active, etc.
+    DELETE /api/v1/admin/portals/{id}/ — soft delete (is_active=False)
+    """
+    permission_classes = [IsStaffUser]
+
+    def get_object(self, pk):
+        try:
+            return Portal.objects.select_related('agency').get(pk=pk)
+        except Portal.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        portal = self.get_object(pk)
+        if not portal:
+            return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        serializer = AdminPortalDetailSerializer(portal)
+        return Response(serializer.data)
+
+    def patch(self, request, pk):
+        portal = self.get_object(pk)
+        if not portal:
+            return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        serializer = AdminPortalSerializer(portal, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, pk):
+        portal = self.get_object(pk)
+        if not portal:
+            return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        
+        portal.is_active = False
+        portal.save(update_fields=['is_active', 'updated_at'])
+        return Response({
+            'detail': 'Portal deactivated (soft-deleted).',
+            'id': portal.id,
+            'is_active': False,
+        })
+
+
+class CustomAdminPortalTriggerCheckView(APIView):
+    """
+    POST /api/v1/admin/portals/{id}/trigger-check/
+    Manually trigger an immediate scrape of this portal outside the normal polling cycle.
+    Returns resulting Snapshot data and whether a change was detected.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, pk):
+        try:
+            portal = Portal.objects.get(pk=pk)
+        except Portal.DoesNotExist:
+            return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        from apps.monitor.tasks import portal_check
+        try:
+            portal_check(portal.id)
+        except Exception as exc:
+            logger.error(f"Manual portal_check failed for portal #{pk}: {exc}")
+            return Response(
+                {'detail': f'Error executing portal scrape: {str(exc)}'},
+                status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        latest_snapshot = Snapshot.objects.filter(portal=portal).order_by('-created_at').first()
+        snapshot_data = SnapshotSerializer(latest_snapshot).data if latest_snapshot else None
+
+        return Response({
+            'detail': f"Manual check triggered successfully for portal '{portal.name}'.",
+            'has_change': latest_snapshot.has_change if latest_snapshot else False,
+            'triggered_alert': latest_snapshot.triggered_alert if latest_snapshot else False,
+            'snapshot': snapshot_data,
+        })
+
+
+class CustomAdminPortalHistoryView(APIView):
+    """
+    GET /api/v1/admin/portals/{id}/history/
+    Returns last 30 days of Snapshot records for this portal
+    (timestamp, status_code, response_time_ms, has_change, triggered_alert).
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request, pk):
+        try:
+            portal = Portal.objects.get(pk=pk)
+        except Portal.DoesNotExist:
+            return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        from datetime import timedelta
+        cutoff = timezone.now() - timedelta(days=30)
+        snapshots = Snapshot.objects.filter(
+            portal=portal,
+            created_at__gte=cutoff
+        ).order_by('-created_at')
+
+        serializer = SnapshotSerializer(snapshots, many=True)
+        return Response(serializer.data)
+
+
+# ─── Custom Admin System Health Endpoint ──────────────────────────────────────
+
+class CustomAdminSystemHealthView(APIView):
+    """
+    GET /api/v1/admin/system-health/
+    Detailed system health dashboard endpoint for staff users.
+    Returns:
+      - system_status (top-level system metrics)
+      - portals_breakdown (every portal, consecutive_failures, last_checked_at, health_status, needs_attention flag)
+      - recent_failed_snapshots (20 most recent failed Snapshot records)
+      - daily_trend_7_days (total_checks and success_rate for the last 7 days)
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        now = timezone.now()
+        today = now.date()
+
+        # 1. System Status Top Level Metrics
+        total_agencies = Agency.objects.filter(is_active=True).count()
+        agencies_online = Portal.objects.filter(
+            is_active=True, status__in=['ONLINE', 'UP']
+        ).values('agency').distinct().count()
+        agencies_offline = Portal.objects.filter(
+            is_active=True, status__in=['OFFLINE', 'DOWN']
+        ).values('agency').distinct().count()
+        agencies_maintenance = Portal.objects.filter(
+            is_active=True, status__in=['MAINTENANCE', 'BLOCKED', 'RATE_LIMITED', 'CAPTCHA']
+        ).values('agency').distinct().count()
+
+        total_checks_today = Snapshot.objects.filter(created_at__date=today).count()
+        successful_checks_today = Snapshot.objects.filter(
+            created_at__date=today, status_code__lt=400
+        ).count()
+        failed_checks_today = total_checks_today - successful_checks_today
+        success_rate_today = round(
+            (successful_checks_today / total_checks_today * 100) if total_checks_today > 0 else 100.0, 2
+        )
+        changes_detected_today = Snapshot.objects.filter(
+            created_at__date=today, has_change=True
+        ).count()
+
+        system_operational = (
+            agencies_offline == 0 or
+            (agencies_offline / max(total_agencies, 1)) < 0.5
+        )
+
+        system_status = {
+            'agencies_online': agencies_online,
+            'agencies_offline': agencies_offline,
+            'agencies_maintenance': agencies_maintenance,
+            'total_agencies': total_agencies,
+            'total_checks_today': total_checks_today,
+            'successful_checks_today': successful_checks_today,
+            'failed_checks_today': failed_checks_today,
+            'success_rate_today': success_rate_today,
+            'changes_detected_today': changes_detected_today,
+            'system_operational': system_operational,
+        }
+
+        # 2. Per-Portal Breakdown
+        portals = Portal.objects.select_related('agency').all().order_by('agency__acronym', 'name')
+        portals_breakdown = []
+        for portal in portals:
+            failing_over_24h = False
+            if portal.consecutive_failures > 0:
+                if portal.last_successful_check_at:
+                    seconds_since_success = (now - portal.last_successful_check_at).total_seconds()
+                    if seconds_since_success >= 86400:
+                        failing_over_24h = True
+                else:
+                    failing_over_24h = True
+
+            needs_attention = (
+                failing_over_24h or
+                portal.consecutive_failures >= 3 or
+                portal.health_status in ['OFFLINE', 'BLOCKED', 'CAPTCHA']
+            )
+
+            portals_breakdown.append({
+                'id': portal.id,
+                'name': portal.name,
+                'agency_acronym': portal.agency.acronym if portal.agency else '',
+                'url': portal.url,
+                'consecutive_failures': portal.consecutive_failures,
+                'last_checked_at': portal.last_checked_at.isoformat() if portal.last_checked_at else None,
+                'last_successful_check_at': portal.last_successful_check_at.isoformat() if portal.last_successful_check_at else None,
+                'health_status': portal.health_status or portal.status,
+                'status': portal.status,
+                'needs_attention': needs_attention,
+            })
+
+        # 3. 20 Most Recent Failed Snapshots across all portals
+        from django.db.models import Q
+        failed_snapshots_qs = Snapshot.objects.filter(
+            Q(status_code__gte=400) | Q(status_code__isnull=True)
+        ).select_related('portal__agency').order_by('-created_at')[:20]
+
+        recent_failed_snapshots = []
+        for snap in failed_snapshots_qs:
+            portal_obj = snap.portal
+            agency_acronym = portal_obj.agency.acronym if (portal_obj and portal_obj.agency) else ''
+            portal_name = portal_obj.name if portal_obj else 'Unknown Portal'
+
+            code = snap.status_code
+            if code == 403:
+                error_detail = 'HTTP 403 Forbidden (Blocked/Cloudflare)'
+            elif code == 404:
+                error_detail = 'HTTP 404 Not Found'
+            elif code == 429:
+                error_detail = 'HTTP 429 Rate Limited'
+            elif code == 500:
+                error_detail = 'HTTP 500 Internal Server Error'
+            elif code == 502:
+                error_detail = 'HTTP 502 Bad Gateway'
+            elif code == 503:
+                error_detail = 'HTTP 503 Service Unavailable'
+            elif code is None:
+                error_detail = 'Network Connection Failed / Timeout'
+            else:
+                error_detail = f'HTTP Error {code}'
+
+            recent_failed_snapshots.append({
+                'id': snap.id,
+                'portal_id': portal_obj.id if portal_obj else None,
+                'portal_name': portal_name,
+                'agency_acronym': agency_acronym,
+                'status_code': snap.status_code,
+                'response_time_ms': snap.response_time_ms,
+                'error_detail': error_detail,
+                'timestamp': snap.created_at.isoformat(),
+            })
+
+        # 4. 7-Day Daily Trend (from PortalHealthLog with Snapshot fallback)
+        from datetime import timedelta
+        from django.db.models import Sum
+
+        daily_trend_7_days = []
+        for i in range(6, -1, -1):
+            day_date = today - timedelta(days=i)
+
+            health_logs = PortalHealthLog.objects.filter(date=day_date)
+            if health_logs.exists():
+                agg = health_logs.aggregate(
+                    total=Sum('checks_total'),
+                    success=Sum('checks_successful'),
+                    failed=Sum('checks_failed')
+                )
+                total_checks = agg['total'] or 0
+                successful_checks = agg['success'] or 0
+                failed_checks = agg['failed'] or 0
+                success_rate = round((successful_checks / total_checks * 100) if total_checks > 0 else 100.0, 2)
+            else:
+                day_snaps = Snapshot.objects.filter(created_at__date=day_date)
+                total_checks = day_snaps.count()
+                successful_checks = day_snaps.filter(status_code__lt=400).count()
+                failed_checks = total_checks - successful_checks
+                success_rate = round((successful_checks / total_checks * 100) if total_checks > 0 else 100.0, 2)
+
+            daily_trend_7_days.append({
+                'date': day_date.strftime('%Y-%m-%d'),
+                'total_checks': total_checks,
+                'successful_checks': successful_checks,
+                'failed_checks': failed_checks,
+                'success_rate': success_rate,
+            })
+
+        return Response({
+            'system_status': system_status,
+            'portals_breakdown': portals_breakdown,
+            'recent_failed_snapshots': recent_failed_snapshots,
+            'daily_trend_7_days': daily_trend_7_days,
+        })
+
+
+
 

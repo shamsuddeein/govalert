@@ -73,11 +73,14 @@ def dispatch_alert(alert_id: int):
         logger.error(f"Alert {alert_id} not found for dispatch.")
         return
 
-    # Fetch matching active users who are subscribed to the alert's agency
+    # Fetch matching active users who are subscribed to the alert's agency.
+    # NDPR compliance: only dispatch to users who have given explicit consent
+    # (tapped [I Agree] during /start). Article 2.2 requires lawful basis.
     subscriptions = Subscription.objects.filter(
         agency=alert.agency,
         is_active=True,
-        user__state=UserState.ACTIVE
+        user__state=UserState.ACTIVE,
+        user__consented_to_data_policy=True,
     ).select_related('user')
 
     users = [sub.user for sub in subscriptions]

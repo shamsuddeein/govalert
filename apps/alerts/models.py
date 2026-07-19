@@ -236,6 +236,15 @@ class Alert(models.Model):
     )
     verified_at = models.DateTimeField(null=True, blank=True)
     admin_notes = models.TextField(blank=True, default='')
+    trust_score_overridden_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='trust_score_overridden_alerts',
+        help_text="Django staff user who manually override the trust score."
+    )
+    trust_score_overridden_at = models.DateTimeField(null=True, blank=True)
+
 
     # ── Delivery ──────────────────────────────────────────────────────────────
     recipients_count = models.PositiveIntegerField(
@@ -265,6 +274,9 @@ class Alert(models.Model):
             models.Index(fields=['agency', 'created_at'], name='idx_alerts_agency_date'),
             models.Index(fields=['event_type', 'status'], name='idx_alerts_type_status'),
             models.Index(fields=['trust_score'], name='idx_alerts_trust'),
+            # Primary public API query: filter(status='APPROVED').order_by('-created_at')
+            # Without this, every /api/v1/jobs/ request does a full table scan.
+            models.Index(fields=['status', 'created_at'], name='idx_alerts_status_date'),
         ]
 
     def __str__(self):

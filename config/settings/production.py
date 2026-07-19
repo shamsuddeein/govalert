@@ -7,6 +7,9 @@ from .base import *  # noqa
 
 DEBUG = False
 
+# Explicit ALLOWED_HOSTS in production — no default, crash on misconfiguration.
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv())  # noqa: F405 — config/Csv imported via base *
+
 # ─── Security Headers ──────────────────────────────────────────────────────────
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

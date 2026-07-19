@@ -64,10 +64,31 @@ public_patterns = [
 
 # ── Admin v1 ──────────────────────────────────────────────────────────────────
 admin_patterns = [
-    path('portals/', views.AdminPortalListView.as_view(), name='admin_portal_list'),
-    path('portals/<int:pk>/', views.AdminPortalDetailView.as_view(), name='admin_portal_detail'),
-    path('alerts/<int:pk>/verify/', views.AdminVerifyAlertView.as_view(), name='admin_verify_alert'),
-    path('alerts/<int:pk>/reject/', views.AdminRejectAlertView.as_view(), name='admin_reject_alert'),
+    # Auth
+    path('auth/login/', views.CustomAdminLoginView.as_view(), name='admin_auth_login'),
+    path('auth/refresh/', TokenRefreshView.as_view(), name='admin_auth_refresh'),
+    path('auth/me/', views.CustomAdminMeView.as_view(), name='admin_auth_me'),
+
+    # Alert Review Queue
+    path('alerts/', views.CustomAdminAlertListView.as_view(), name='admin_alert_list'),
+    path('alerts/stats/', views.CustomAdminAlertStatsView.as_view(), name='admin_alert_stats'),
+    path('alerts/<int:pk>/approve/', views.CustomAdminAlertApproveView.as_view(), name='admin_alert_approve'),
+    path('alerts/<int:pk>/reject/', views.CustomAdminAlertRejectView.as_view(), name='admin_alert_reject'),
+    path('alerts/<int:pk>/hold/', views.CustomAdminAlertHoldView.as_view(), name='admin_alert_hold'),
+    path('alerts/<int:pk>/', views.CustomAdminAlertUpdateView.as_view(), name='admin_alert_update'),
+
+    # Agency Management
+    path('agencies/', views.CustomAdminAgencyListCreateView.as_view(), name='admin_agency_list_create'),
+    path('agencies/<int:pk>/', views.CustomAdminAgencyDetailView.as_view(), name='admin_agency_detail'),
+
+    # Portal Management
+    path('portals/', views.CustomAdminPortalListCreateView.as_view(), name='admin_portal_list_create'),
+    path('portals/<int:pk>/', views.CustomAdminPortalDetailView.as_view(), name='admin_portal_detail'),
+    path('portals/<int:pk>/trigger-check/', views.CustomAdminPortalTriggerCheckView.as_view(), name='admin_portal_trigger_check'),
+    path('portals/<int:pk>/history/', views.CustomAdminPortalHistoryView.as_view(), name='admin_portal_history'),
+
+    # System Health & Broadcast
+    path('system-health/', views.CustomAdminSystemHealthView.as_view(), name='admin_system_health'),
     path('broadcast/', views.AdminBroadcastView.as_view(), name='admin_broadcast'),
     path('stats/', views.AdminStatsView.as_view(), name='admin_stats'),
 ]

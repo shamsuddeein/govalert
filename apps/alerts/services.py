@@ -44,15 +44,15 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         has_fraud_keywords = any(kw in content_lower for kw in ["fee", "pay", "charge", "naira", "deposit", "payment", "bank"])
         has_recruitment_keywords = any(kw in content_lower for kw in ["recruitment", "careers", "apply", "job", "vacancy"])
 
-        classification = 'REAL'
-        confidence = 75
+        classification = 'UNCERTAIN'
+        confidence = 40
 
         if has_fraud_keywords:
-            classification = 'SUSPICIOUS'
-            confidence = 80
+            classification = 'UNCERTAIN'
+            confidence = 30
         elif not has_recruitment_keywords:
             classification = 'UNCERTAIN'
-            confidence = 50
+            confidence = 30
 
         ai_res = {
             'classification': classification,
@@ -72,10 +72,11 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     trust_score = calculate_trust_score(agency, portal.url, ai_confidence)
 
     # 3. Determine status
-    if trust_score >= 70:
-        alert_status = AlertStatus.APPROVED
-    else:
-        alert_status = AlertStatus.PENDING
+    # CRITICAL: All newly detected alerts from automated scrapers MUST start as PENDING.
+    # Human review via /admin/alerts is mandatory to set status='APPROVED',
+    # is_verified=True, verified_by=username, and verified_at=now.
+    alert_status = AlertStatus.PENDING
+    logger.info(f"Alert queued as PENDING for human admin review (trust_score={trust_score}).")
 
     # 4. Extract and normalize recruitment data
     extracted = ai_res.get('extracted', {})
