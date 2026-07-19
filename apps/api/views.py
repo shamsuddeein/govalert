@@ -1386,32 +1386,53 @@ class CustomAdminSystemHealthView(APIView):
 
         # 1. System Status Top Level Metrics
         total_agencies = Agency.objects.filter(is_active=True).count()
-        agencies_online = Portal.objects.filter(
-            is_active=True, status__in=['ONLINE', 'UP']
-        ).values('agency').distinct().count()
-        agencies_offline = Portal.objects.filter(
-            is_active=True, status__in=['OFFLINE', 'DOWN']
-        ).values('agency').distinct().count()
-        agencies_maintenance = Portal.objects.filter(
-            is_active=True, status__in=['MAINTENANCE', 'BLOCKED', 'RATE_LIMITED', 'CAPTCHA']
+        active_portals = Portal.objects.filter(is_active=True).select_related('agency')
+
+        agencies_offline = active_portals.filter(
+            Q(health_status__in=['OFFLINE', 'DOWN']) | Q(status__in=['OFFLINE', 'DOWN']) | Q(consecutive_failures__gt=0)
         ).values('agency').distinct().count()
 
-        total_checks_today = Snapshot.objects.filter(created_at__date=today).count()
-        successful_checks_today = Snapshot.objects.filter(
-            created_at__date=today, status_code__lt=400
-        ).count()
-        failed_checks_today = total_checks_today - successful_checks_today
-        success_rate_today = round(
-            (successful_checks_today / total_checks_today * 100) if total_checks_today > 0 else 100.0, 2
-        )
+        agencies_maintenance = active_portals.filter(
+            Q(health_status__in=['MAINTENANCE', 'BLOCKED', 'RATE_LIMITED', 'CAPTCHA']) | Q(status__in=['MAINTENANCE', 'BLOCKED', 'RATE_LIMITED', 'CAPTCHA'])
+        ).values('agency').distinct().count()
+
+        agencies_online = max(0, total_agencies - (agencies_offline + agencies_maintenance))
+
+        # Check today's snapshots
+        today_snaps = Snapshot.objects.filter(created_at__date=today)
+        total_checks_today = today_snaps.count()
+
+        if total_checks_today > 0:
+            successful_checks_today = today_snaps.filter(status_code__lt=400).count()
+            failed_checks_today = total_checks_today - successful_checks_today
+            success_rate_today = round((successful_checks_today / total_checks_today) * 100, 2)
+        else:
+            # Fallback to 24h window if no checks yet today
+            from datetime import timedelta
+            snaps_24h = Snapshot.objects.filter(created_at__gte=now - timedelta(hours=24))
+            if snaps_24h.exists():
+                total_checks_today = snaps_24h.count()
+                successful_checks_today = snaps_24h.filter(status_code__lt=400).count()
+                failed_checks_today = total_checks_today - successful_checks_today
+                success_rate_today = round((successful_checks_today / total_checks_today) * 100, 2)
+            else:
+                # If no snapshots in last 24h, derive from live portal roster state
+                total_portals_count = active_portals.count()
+                offline_portals_count = active_portals.filter(
+                    Q(health_status__in=['OFFLINE', 'DOWN']) | Q(status__in=['OFFLINE', 'DOWN']) | Q(consecutive_failures__gt=0)
+                ).count()
+                online_portals_count = max(0, total_portals_count - offline_portals_count)
+
+                total_checks_today = total_portals_count
+                successful_checks_today = online_portals_count
+                failed_checks_today = offline_portals_count
+                success_rate_today = round((online_portals_count / max(total_portals_count, 1)) * 100, 2)
+
         changes_detected_today = Snapshot.objects.filter(
             created_at__date=today, has_change=True
         ).count()
 
-        system_operational = (
-            agencies_offline == 0 or
-            (agencies_offline / max(total_agencies, 1)) < 0.5
-        )
+        system_operational = (agencies_offline == 0)
 
         system_status = {
             'agencies_online': agencies_online,
@@ -1430,19 +1451,25 @@ class CustomAdminSystemHealthView(APIView):
         portals = Portal.objects.select_related('agency').all().order_by('agency__acronym', 'name')
         portals_breakdown = []
         for portal in portals:
-            failing_over_24h = False
-            if portal.consecutive_failures > 0:
+            effective_status = portal.health_status if (portal.health_status and portal.health_status != 'UNKNOWN') else portal.status
+            is_failing = (portal.consecutive_failures > 0 or effective_status in ['OFFLINE', 'DOWN', 'BLOCKED', 'CAPTCHA', 'RATE_LIMITED'])
+
+            down_duration_seconds = 0
+            if is_failing:
                 if portal.last_successful_check_at:
-                    seconds_since_success = (now - portal.last_successful_check_at).total_seconds()
-                    if seconds_since_success >= 86400:
-                        failing_over_24h = True
+                    down_duration_seconds = max(int((now - portal.last_successful_check_at).total_seconds()), 0)
+                elif portal.last_checked_at:
+                    down_duration_seconds = max(int((now - portal.last_checked_at).total_seconds()), 0)
                 else:
-                    failing_over_24h = True
+                    down_duration_seconds = 3600
+
+            failing_over_24h = (is_failing and down_duration_seconds >= 86400)
 
             needs_attention = (
-                failing_over_24h or
-                portal.consecutive_failures >= 3 or
-                portal.health_status in ['OFFLINE', 'BLOCKED', 'CAPTCHA']
+                is_failing and (
+                    portal.consecutive_failures >= 1 or
+                    effective_status in ['OFFLINE', 'DOWN', 'BLOCKED', 'CAPTCHA', 'RATE_LIMITED']
+                )
             )
 
             portals_breakdown.append({
@@ -1453,9 +1480,11 @@ class CustomAdminSystemHealthView(APIView):
                 'consecutive_failures': portal.consecutive_failures,
                 'last_checked_at': portal.last_checked_at.isoformat() if portal.last_checked_at else None,
                 'last_successful_check_at': portal.last_successful_check_at.isoformat() if portal.last_successful_check_at else None,
-                'health_status': portal.health_status or portal.status,
+                'health_status': effective_status,
                 'status': portal.status,
                 'needs_attention': needs_attention,
+                'down_duration_seconds': down_duration_seconds,
+                'failing_over_24h': failing_over_24h,
             })
 
         # 3. 20 Most Recent Failed Snapshots across all portals
@@ -1465,8 +1494,12 @@ class CustomAdminSystemHealthView(APIView):
         ).select_related('portal__agency').order_by('-created_at')[:20]
 
         recent_failed_snapshots = []
+        seen_portal_ids = set()
+
         for snap in failed_snapshots_qs:
             portal_obj = snap.portal
+            if portal_obj:
+                seen_portal_ids.add(portal_obj.id)
             agency_acronym = portal_obj.agency.acronym if (portal_obj and portal_obj.agency) else ''
             portal_name = portal_obj.name if portal_obj else 'Unknown Portal'
 
@@ -1493,11 +1526,37 @@ class CustomAdminSystemHealthView(APIView):
                 'portal_id': portal_obj.id if portal_obj else None,
                 'portal_name': portal_name,
                 'agency_acronym': agency_acronym,
-                'status_code': snap.status_code,
+                'status_code': snap.status_code or 500,
                 'response_time_ms': snap.response_time_ms,
                 'error_detail': error_detail,
                 'timestamp': snap.created_at.isoformat(),
             })
+
+        # Ensure all currently failing/offline portals appear in the log if they lack recent failed snapshot rows
+        failing_portals = Portal.objects.filter(
+            Q(consecutive_failures__gt=0) | Q(health_status__in=['OFFLINE', 'DOWN', 'BLOCKED', 'CAPTCHA']) | Q(status__in=['OFFLINE', 'DOWN', 'BLOCKED', 'CAPTCHA'])
+        ).select_related('agency')
+
+        for p_obj in failing_portals:
+            if p_obj.id not in seen_portal_ids:
+                status_label = p_obj.health_status if (p_obj.health_status and p_obj.health_status != 'UNKNOWN') else p_obj.status
+                code = 404 if status_label in ['OFFLINE', 'DOWN'] else (403 if status_label == 'BLOCKED' else (429 if status_label == 'RATE_LIMITED' else 500))
+                error_detail = f'Portal {status_label} ({p_obj.consecutive_failures} consecutive failures)'
+
+                recent_failed_snapshots.append({
+                    'id': f'portal-fail-{p_obj.id}',
+                    'portal_id': p_obj.id,
+                    'portal_name': p_obj.name,
+                    'agency_acronym': p_obj.agency.acronym if p_obj.agency else '',
+                    'status_code': code,
+                    'response_time_ms': p_obj.response_time_ms or 0,
+                    'error_detail': error_detail,
+                    'timestamp': (p_obj.last_checked_at or now).isoformat(),
+                })
+
+        # Sort combined recent failed snapshots by timestamp descending
+        recent_failed_snapshots.sort(key=lambda s: s['timestamp'], reverse=True)
+        recent_failed_snapshots = recent_failed_snapshots[:20]
 
         # 4. 7-Day Daily Trend (from PortalHealthLog with Snapshot fallback)
         from datetime import timedelta
@@ -1517,13 +1576,13 @@ class CustomAdminSystemHealthView(APIView):
                 total_checks = agg['total'] or 0
                 successful_checks = agg['success'] or 0
                 failed_checks = agg['failed'] or 0
-                success_rate = round((successful_checks / total_checks * 100) if total_checks > 0 else 100.0, 2)
+                success_rate = round((successful_checks / total_checks * 100), 2) if total_checks > 0 else None
             else:
                 day_snaps = Snapshot.objects.filter(created_at__date=day_date)
                 total_checks = day_snaps.count()
                 successful_checks = day_snaps.filter(status_code__lt=400).count()
                 failed_checks = total_checks - successful_checks
-                success_rate = round((successful_checks / total_checks * 100) if total_checks > 0 else 100.0, 2)
+                success_rate = round((successful_checks / total_checks * 100), 2) if total_checks > 0 else None
 
             daily_trend_7_days.append({
                 'date': day_date.strftime('%Y-%m-%d'),
