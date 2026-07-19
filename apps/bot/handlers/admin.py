@@ -3,6 +3,8 @@ Admin bot command handlers — /admin, /broadcast, /stats.
 Restricted to is_admin / is_super_admin users only.
 """
 import logging
+from datetime import timedelta
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +102,6 @@ def handle_stats(message: dict):
     from apps.agencies.models import Agency, Portal
     from apps.notifications.models import Notification, NotificationStatus
     from apps.notifications.sender import send_message
-    from django.utils import timezone
-    from datetime import timedelta
 
     chat_id = message['chat']['id']
     now = timezone.now()

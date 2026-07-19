@@ -1,6 +1,7 @@
 """
 GovAlert API v1 — Serializers for agencies, jobs (alerts), and system status.
 """
+from django.utils import timezone
 from rest_framework import serializers
 from apps.agencies.models import Agency, Portal
 from apps.alerts.models import Alert, AlertStatus, RecruitmentEvent, DecisionLog
@@ -160,7 +161,6 @@ class AgencyDetailSerializer(AgencyListSerializer):
         return None
 
     def get_last_offline_duration_minutes(self, obj):
-        from django.utils import timezone
         portal = self._primary_portal(obj)
         if not portal:
             return None

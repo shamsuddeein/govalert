@@ -1,5 +1,7 @@
 import logging
+from datetime import timedelta
 from django.utils import timezone
+from django.db.models import Avg, Count, Q
 from storage.backup import export_and_backup
 from celery import shared_task
 
@@ -254,7 +256,6 @@ def daily_health_report():
     window rather than the 8 hours that would have elapsed by 08:00 today.
     """
     logger.info("Generating daily health report...")
-    from datetime import timedelta
     from apps.monitor.models import Snapshot
     from apps.notifications.sender import send_message
     from django.conf import settings
@@ -301,8 +302,6 @@ def aggregate_portal_health_logs():
     Runs nightly at 00:30 (after midnight so yesterday is fully complete).
     Uses update_or_create so re-runs are idempotent (safe to re-trigger manually).
     """
-    from datetime import timedelta
-    from django.db.models import Avg, Count, Q
     from decimal import Decimal
     from apps.agencies.models import Portal
     from apps.monitor.models import Snapshot, PortalHealthLog
@@ -363,7 +362,6 @@ def purge_old_snapshot_content():
 
     Safe to re-run — idempotent (empty strings are skipped by the filter).
     """
-    from datetime import timedelta
     from apps.monitor.models import Snapshot
 
     cutoff = timezone.now() - timedelta(days=30)

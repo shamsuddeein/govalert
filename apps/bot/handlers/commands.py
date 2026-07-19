@@ -3,6 +3,7 @@ Command handlers — stub implementations.
 Full logic implemented in Volume 2 (Bot Specification).
 """
 import logging
+from django.db.models import Avg
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,6 @@ def handle_history(message: dict):
 def handle_status(message: dict):
     from apps.agencies.models import Portal, PortalStatus
     from apps.notifications.sender import send_message
-    from django.db.models import Avg
     chat_id = message['chat']['id']
     
     portals = Portal.objects.filter(is_active=True)

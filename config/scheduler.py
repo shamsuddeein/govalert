@@ -15,6 +15,7 @@ Keeping maintenance jobs on the low executor (2 threads) minimises this.
 For a permanent fix, migrate to PostgreSQL (Phase 2).
 """
 import logging
+from django.utils import timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from django_apscheduler.jobstores import DjangoJobStore
@@ -135,7 +136,6 @@ def start():
     # immediately on startup causes a boot-time spike and competes with the
     # scheduler's own DB writes, worsening the SQLite lock warning.
     try:
-        from django.utils import timezone
         scheduler.get_job('check_high_priority_portals').modify(next_run_time=timezone.now())
         logger.info("⚡ Triggered initial high-priority portal check on startup.")
     except Exception as e:

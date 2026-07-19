@@ -18,9 +18,12 @@ Endpoint map:
 """
 import logging
 from datetime import timedelta
+from django.conf import settings
 from django.utils import timezone
 from django.core.cache import cache
-from django.db.models import Q, Sum
+from django.db import connection
+from django.db.models import Q, Sum, Avg, Count, Max, Min, F, Prefetch
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -85,7 +88,6 @@ class AgencyListView(APIView):
 
     def get(self, request):
         from apps.agencies.models import Agency, Portal
-        from django.db.models import Prefetch
 
         agencies = list(Agency.objects.filter(is_active=True).prefetch_related(
             Prefetch('portals', queryset=Portal.objects.filter(is_active=True).order_by('priority'))
@@ -122,7 +124,6 @@ class AgencyDetailView(APIView):
 
     def get(self, request, slug):
         from apps.agencies.models import Agency
-        from django.db.models import Q
         try:
             agency = Agency.objects.filter(
                 Q(slug__iexact=slug) | Q(acronym__iexact=slug),
@@ -155,7 +156,6 @@ class JobListView(APIView):
 
     def get(self, request):
         from apps.alerts.models import Alert, AlertStatus
-        from django.db.models import Q
 
         qs = Alert.objects.filter(
             status=AlertStatus.APPROVED
@@ -434,12 +434,9 @@ class HealthView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        from django.db import connection
-        from django.conf import settings
         from apps.monitor.models import Snapshot
         from apps.alerts.models import Alert, DecisionLog
         from apps.notifications.models import Notification, NotificationStatus
-        from django.db.models import Avg
 
         data = {'status': 'ok'}
 
@@ -516,7 +513,6 @@ class AdminPortalDetailView(APIView):
     def get(self, request, pk):
         from apps.agencies.models import Portal
         from apps.agencies.serializers import PortalSerializer
-        from django.shortcuts import get_object_or_404
         portal = get_object_or_404(Portal, pk=pk)
         return Response(PortalSerializer(portal).data)
 
@@ -526,7 +522,6 @@ class AdminVerifyAlertView(APIView):
 
     def post(self, request, pk):
         from apps.alerts.models import Alert, AlertStatus
-        from django.shortcuts import get_object_or_404
         alert = get_object_or_404(Alert, pk=pk)
         alert.is_verified = True
         alert.status = AlertStatus.APPROVED
@@ -541,7 +536,6 @@ class AdminRejectAlertView(APIView):
 
     def post(self, request, pk):
         from apps.alerts.models import Alert, AlertStatus
-        from django.shortcuts import get_object_or_404
         alert = get_object_or_404(Alert, pk=pk)
         alert.status = AlertStatus.REJECTED
         alert.save()
@@ -580,7 +574,6 @@ class AdminStatsView(APIView):
         from apps.agencies.models import Agency
         from apps.monitor.models import Snapshot
         from apps.notifications.models import Notification, NotificationStatus
-        from django.db.models import Avg
 
         today = timezone.now().date()
 
@@ -815,7 +808,6 @@ class CustomAdminLoginView(APIView):
             )
 
         from django.contrib.auth.models import User
-        from django.db.models import Q
         user_obj = User.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier)).first()
 
         if not user_obj:
@@ -1011,7 +1003,6 @@ class CustomAdminAlertRejectView(APIView):
 
         # Increment false positives if AI was REAL
         if alert.ai_classification == 'REAL':
-            from django.db.models import F
             from apps.agencies.models import Agency
             Agency.objects.filter(pk=alert.agency_id).update(false_positives=F('false_positives') + 1)
 
@@ -1357,7 +1348,6 @@ class CustomAdminPortalHistoryView(APIView):
         except Portal.DoesNotExist:
             return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
-        from datetime import timedelta
         cutoff = timezone.now() - timedelta(days=30)
         snapshots = Snapshot.objects.filter(
             portal=portal,
@@ -1410,7 +1400,6 @@ class CustomAdminSystemHealthView(APIView):
             success_rate_today = round((successful_checks_today / total_checks_today) * 100, 2)
         else:
             # Fallback to 24h window if no checks yet today
-            from datetime import timedelta
             snaps_24h = Snapshot.objects.filter(created_at__gte=now - timedelta(hours=24))
             if snaps_24h.exists():
                 total_checks_today = snaps_24h.count()
