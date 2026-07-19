@@ -17,8 +17,10 @@ Endpoint map:
   POST /api/v1/admin/broadcast/           → AdminBroadcastView
 """
 import logging
+from datetime import timedelta
 from django.utils import timezone
 from django.core.cache import cache
+from django.db.models import Q, Sum
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -1488,7 +1490,6 @@ class CustomAdminSystemHealthView(APIView):
             })
 
         # 3. 20 Most Recent Failed Snapshots across all portals
-        from django.db.models import Q
         failed_snapshots_qs = Snapshot.objects.filter(
             Q(status_code__gte=400) | Q(status_code__isnull=True)
         ).select_related('portal__agency').order_by('-created_at')[:20]
@@ -1559,9 +1560,6 @@ class CustomAdminSystemHealthView(APIView):
         recent_failed_snapshots = recent_failed_snapshots[:20]
 
         # 4. 7-Day Daily Trend (from PortalHealthLog with Snapshot fallback)
-        from datetime import timedelta
-        from django.db.models import Sum
-
         daily_trend_7_days = []
         for i in range(6, -1, -1):
             day_date = today - timedelta(days=i)

@@ -170,3 +170,39 @@ def test_email_backend_and_form():
     assert authenticated_user == user
 
 
+@pytest.mark.django_db
+def test_admin_system_health_api():
+    from django.contrib.auth.models import User
+    from apps.agencies.models import Agency, Portal
+    from apps.monitor.models import Snapshot
+
+    staff_user = User.objects.create_user(username='staffuser', password='password', is_staff=True)
+    client = APIClient()
+    client.force_authenticate(user=staff_user)
+
+    agency = Agency.objects.create(name="Customs", acronym="NCS", category="FINANCE", official_domains=["customs.gov.ng"], is_active=True)
+    portal = Portal.objects.create(agency=agency, name="Customs Portal", url="https://customs.gov.ng", health_status="OFFLINE", consecutive_failures=3, is_active=True)
+    Snapshot.objects.create(portal=portal, status_code=500, response_time_ms=300)
+
+    url = reverse('api:admin_system_health')
+    response = client.get(url)
+    assert response.status_code == 200
+    assert 'system_status' in response.data
+    assert 'portals_breakdown' in response.data
+    assert 'recent_failed_snapshots' in response.data
+    assert 'daily_trend_7_days' in response.data
+    assert len(response.data['portals_breakdown']) >= 1
+    assert len(response.data['recent_failed_snapshots']) >= 1
+
+
+@pytest.mark.django_db
+def test_management_commands_audit_and_reconcile():
+    from django.core.management import call_command
+    from apps.agencies.models import Agency, Portal
+
+    Agency.objects.create(name="Army", acronym="Army", category="SECURITY", official_domains=["army.mil.ng"], is_active=True)
+    call_command('audit_agency_data')
+    call_command('reconcile_agency_data')
+
+
+
