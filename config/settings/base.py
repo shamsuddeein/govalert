@@ -83,28 +83,61 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-# ─── Database — Phase 2: PostgreSQL ────────────────────────────────────────────
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='govalert_db'),
-        'USER': config('DB_USER', default='deen'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default=''),
-        'PORT': config('DB_PORT', default='5432'),
-    }
-}
+# ─── Database ──────────────────────────────────────────────────────────────────
+import urllib.parse
 
-# ─── Cache — Phase 2: Redis ───────────────────────────────────────────────────
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/0'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+database_url = config('DATABASE_URL', default='')
+db_host = config('DB_HOST', default=config('PGHOST', default=''))
+
+if database_url:
+    url = urllib.parse.urlparse(database_url)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': url.path[1:] if url.path else '',
+            'USER': url.username or '',
+            'PASSWORD': url.password or '',
+            'HOST': url.hostname or '',
+            'PORT': str(url.port or 5432),
         }
     }
-}
+elif db_host:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default=config('PGDATABASE', default='govalert_db')),
+            'USER': config('DB_USER', default=config('PGUSER', default='postgres')),
+            'PASSWORD': config('DB_PASSWORD', default=config('PGPASSWORD', default='')),
+            'HOST': db_host,
+            'PORT': config('DB_PORT', default=config('PGPORT', default='5432')),
+        }
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'users.db',
+        }
+    }
+
+# ─── Cache ─────────────────────────────────────────────────────────────────────
+redis_url = config('REDIS_URL', default='')
+if redis_url:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': redis_url,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 
 AUTHENTICATION_BACKENDS = [
     'apps.accounts.backends.EmailBackend',
