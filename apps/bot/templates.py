@@ -4,6 +4,7 @@ Professional layout without emojis, symbols, or AI/trust branding.
 Uses native Telegram HTML tags (blockquote, bold, anchor) for structural card layouts.
 """
 from html import escape
+from django.conf import settings
 from core.utils import format_date_nigerian
 
 
@@ -35,6 +36,10 @@ def format_alert_full(alert) -> str:
 
     deadline_val = escape(str(alert.deadline)) if alert.deadline else 'Open'
     
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://www.recruitmentalert.com.ng').rstrip('/')
+    job_ref = getattr(alert, 'ref', alert.id)
+    web_url = f"{frontend_url}/jobs/{job_ref}"
+
     return (
         f"{agency_display}\n"
         f"{event_display}\n"
@@ -42,7 +47,8 @@ def format_alert_full(alert) -> str:
         f"<b>Positions:</b>{positions_formatted}"
         f"{reqs_formatted}\n\n"
         f"<b>Deadline:</b> {deadline_val}\n"
-        f"<b>Portal:</b> <a href='{escape(alert.source_url)}'>{escape(alert.source_url)}</a>"
+        f"<b>Portal:</b> <a href='{escape(alert.source_url)}'>{escape(alert.source_url)}</a>\n"
+        f"<b>Web Details:</b> <a href='{web_url}'>{web_url}</a>"
         f"</blockquote>"
     )
 
