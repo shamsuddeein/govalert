@@ -98,6 +98,7 @@ class AgencyDetailSerializer(AgencyListSerializer):
     last_update = serializers.SerializerMethodField()
     recruitment_history = serializers.SerializerMethodField()
     last_10_checks = serializers.SerializerMethodField()
+    total_checks = serializers.SerializerMethodField()
     last_offline_at = serializers.SerializerMethodField()
     last_offline_duration_minutes = serializers.SerializerMethodField()
 
@@ -105,11 +106,17 @@ class AgencyDetailSerializer(AgencyListSerializer):
         fields = AgencyListSerializer.Meta.fields + [
             'monitoring_interval_minutes', 'uptime_percent',
             'total_recruitments_detected', 'last_update',
-            'recruitment_history', 'last_10_checks',
+            'recruitment_history', 'last_10_checks', 'total_checks',
             'last_offline_at', 'last_offline_duration_minutes',
             'avg_confidence_score', 'false_positives', 'scam_domains_blocked',
             'official_domains',
         ]
+
+    def get_total_checks(self, obj):
+        portal = self._primary_portal(obj)
+        if not portal:
+            return 0
+        return Snapshot.objects.filter(portal=portal).count()
 
     def get_monitoring_interval_minutes(self, obj):
         portal = self._primary_portal(obj)
