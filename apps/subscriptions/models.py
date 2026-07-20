@@ -85,3 +85,39 @@ class KeywordSubscription(models.Model):
     def __str__(self):
         return f"{self.email} → '{self.query_text}'"
 
+
+class TelegramJobWatch(models.Model):
+    """
+    Connects a TelegramUser directly to a specific Alert / RecruitmentEvent chain.
+    Created via Telegram Deep Linking when user taps 'Get alerts for this job'
+    t.me/RecruitmentAlertNG_bot?start=watch_{job_ref} on the web app.
+    """
+    user = models.ForeignKey(
+        'accounts.TelegramUser',
+        on_delete=models.CASCADE,
+        related_name='watched_jobs',
+    )
+    alert = models.ForeignKey(
+        'alerts.Alert',
+        on_delete=models.CASCADE,
+        related_name='watchers',
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_notified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'telegram_job_watches'
+        unique_together = ('user', 'alert')
+        ordering = ['-created_at']
+        verbose_name = 'Telegram Job Watch'
+        verbose_name_plural = 'Telegram Job Watches'
+        indexes = [
+            models.Index(fields=['user', 'is_active'], name='idx_jw_user_active'),
+            models.Index(fields=['alert', 'is_active'], name='idx_jw_alert_active'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.display_name} watching Alert #{self.alert.id} ({self.alert.agency.acronym})"
+
+

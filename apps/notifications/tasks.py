@@ -93,10 +93,11 @@ def dispatch_alert(alert_id: int):
 
     # Match and send emails to keyword subscribers
     try:
-        from apps.subscriptions.services import match_keyword_subscriptions_for_alert
+        from apps.subscriptions.services import match_keyword_subscriptions_for_alert, notify_job_watchers
         match_keyword_subscriptions_for_alert(alert)
+        notify_job_watchers(alert)
     except Exception as exc:
-        logger.warning(f"Failed to match keyword subscriptions for alert {alert_id}: {exc}")
+        logger.warning(f"Failed to match subscriptions/watchers for alert {alert_id}: {exc}")
 
     # Post to public alert channel
     try:

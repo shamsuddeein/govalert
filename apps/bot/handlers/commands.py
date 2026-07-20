@@ -52,16 +52,16 @@ def _get_or_create_user(message: dict):
 def handle_start(message: dict):
     """
     /start — Register user + auto-subscribe to ALL agencies immediately.
-    FR-U001, FR-S001.
-
-    Volume 2 (updated): No consent gate. One tap = fully subscribed.
-    New user  → create record, subscribe all, send WELCOME message.
-    Returning → send RETURNING message (already subscribed, nothing to do).
+    Supports Telegram Deep Linking payload `/start watch_{job_ref}` to watch
+    updates for a specific recruitment alert chain.
     """
     from apps.subscriptions.services import auto_subscribe_all
+    from apps.subscriptions.models import TelegramJobWatch
+    from apps.alerts.models import Alert
     from apps.notifications.sender import send_message
     from apps.bot.messages import WELCOME_MESSAGE, RETURNING_MESSAGE
     from apps.bot.keyboards import get_start_keyboard
+    from django.conf import settings
 
     user, created = _get_or_create_user(message)
     if not user:
@@ -70,10 +70,50 @@ def handle_start(message: dict):
     chat_id = message['chat']['id']
 
     if created:
-        # New user — subscribe to everything immediately
         auto_subscribe_all(user)
         user.state = 'ACTIVE'
         user.save(update_fields=['state'])
+
+    text_content = (message.get('text') or '').strip()
+    parts = text_content.split()
+    payload = parts[1] if len(parts) > 1 else ''
+
+    if payload.startswith('watch_'):
+        job_ref = payload.replace('watch_', '').strip()
+        alert = None
+        
+        if '-GA' in job_ref or job_ref.isdigit():
+            pk_str = job_ref.split('-GA')[0] if '-GA' in job_ref else job_ref
+            if pk_str.isdigit():
+                alert = Alert.objects.filter(pk=int(pk_str)).first()
+
+        if not alert and job_ref:
+            alert = Alert.objects.filter(title__icontains=job_ref).first()
+
+        if alert:
+            watch, watch_created = TelegramJobWatch.objects.get_or_create(
+                user=user,
+                alert=alert,
+                defaults={'is_active': True}
+            )
+            if not watch.is_active:
+                watch.is_active = True
+                watch.save(update_fields=['is_active'])
+
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'https://www.recruitmentalert.com.ng').rstrip('/')
+            web_url = f"{frontend_url}/jobs/{getattr(alert, 'ref', alert.id)}"
+
+            watch_msg = (
+                f"<b>🔔 Job Watch Activated!</b>\n\n"
+                f"You are now watching updates for <b>{alert.title}</b> ({alert.agency.acronym}).\n\n"
+                f"We will send you instant alerts whenever there are updates (deadline extensions, shortlists, screening notices, portal status changes) for this recruitment!\n\n"
+                f"<b>Web Page:</b> <a href='{web_url}'>{web_url}</a>"
+            )
+            send_message(chat_id=chat_id, text=watch_msg, parse_mode='HTML')
+            logger.info(f"User {user.telegram_id} is now watching job {alert.id}")
+            return
+
+    if created:
         send_message(
             chat_id=chat_id,
             text=WELCOME_MESSAGE.format(name=user.display_name),
@@ -82,7 +122,6 @@ def handle_start(message: dict):
         )
         logger.info(f"New user {user.telegram_id} registered and subscribed.")
     else:
-        # Returning user — just greet them, subscriptions are already active
         user.mark_active()
         send_message(chat_id=chat_id, text=RETURNING_MESSAGE.format(name=user.display_name), parse_mode='HTML')
         logger.info(f"Returning user {user.telegram_id} re-started bot.")

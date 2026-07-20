@@ -76,3 +76,47 @@ def test_handle_start_returning_user():
     args, kwargs = mock_send.call_args
     assert kwargs['chat_id'] == 12345
     assert "Welcome back to RecruitmentAlert" in kwargs['text']
+
+
+@pytest.mark.django_db
+def test_handle_start_watch_deeplink():
+    from apps.alerts.models import Alert, AlertStatus, EventType
+    from apps.subscriptions.models import TelegramJobWatch
+
+    agency = Agency.objects.create(name="Nigeria Police Force", acronym="NPF", official_domains=["npf.gov.ng"], is_active=True)
+    alert = Alert.objects.create(pk=999, agency=agency, title="NPF Constable Recruitment 2026", status=AlertStatus.APPROVED, event_type=EventType.RECRUITMENT_OPEN)
+
+    message = {
+        'chat': {'id': 99999},
+        'from': {'id': 99999, 'first_name': 'Watcher', 'username': 'watcheruser'},
+        'text': '/start watch_999-GA'
+    }
+
+    with patch('apps.notifications.sender.send_message') as mock_send:
+        handle_start(message)
+
+    user = TelegramUser.objects.get(telegram_id=99999)
+    assert TelegramJobWatch.objects.filter(user=user, alert=alert, is_active=True).exists()
+
+    mock_send.assert_called_once()
+    assert "Job Watch Activated" in mock_send.call_args[1]['text']
+
+
+@pytest.mark.django_db
+def test_notify_job_watchers():
+    from apps.alerts.models import Alert, AlertStatus, EventType
+    from apps.subscriptions.models import TelegramJobWatch
+    from apps.subscriptions.services import notify_job_watchers
+
+    user = TelegramUser.objects.create(telegram_id=88888, first_name="Watcher", state=UserState.ACTIVE)
+    agency = Agency.objects.create(name="Nigeria Immigration Service", acronym="NIS", official_domains=["immigration.gov.ng"], is_active=True)
+    alert = Alert.objects.create(pk=888, agency=agency, title="NIS Officer Recruitment", status=AlertStatus.APPROVED, event_type=EventType.DEADLINE_EXTENDED)
+
+    TelegramJobWatch.objects.create(user=user, alert=alert, is_active=True)
+
+    with patch('apps.notifications.sender.send_message', return_value=True) as mock_send:
+        count = notify_job_watchers(alert)
+        assert count == 1
+        mock_send.assert_called_once()
+        assert "Watched Recruitment Update" in mock_send.call_args[1]['text']
+

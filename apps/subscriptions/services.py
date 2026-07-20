@@ -169,3 +169,57 @@ def match_keyword_subscriptions_for_alert(alert) -> int:
         logger.info(f"Alert {alert.id} matched {match_count} keyword subscriptions.")
     return match_count
 
+
+def notify_job_watchers(alert) -> int:
+    """
+    When a new Alert / RecruitmentEvent update is approved, send direct Telegram
+    notifications to all TelegramUser accounts watching this recruitment chain.
+    """
+    from apps.notifications.sender import send_message
+    from apps.bot.templates import format_alert_full
+    from django.conf import settings
+    from django.utils import timezone
+    from .models import TelegramJobWatch
+
+    watches = TelegramJobWatch.objects.filter(is_active=True).select_related('user', 'alert')
+    if not watches.exists():
+        return 0
+
+    target_alert_ids = {alert.id}
+    if alert.recruitment_event:
+        prev = alert.recruitment_event.previous_event
+        while prev:
+            for linked_alert in prev.alerts.all():
+                target_alert_ids.add(linked_alert.id)
+            prev = prev.previous_event
+
+    matching_watches = watches.filter(alert_id__in=target_alert_ids)
+    if not matching_watches.exists():
+        return 0
+
+    update_msg = (
+        f"<b>🔔 Watched Recruitment Update!</b>\n\n"
+        f"{format_alert_full(alert)}\n\n"
+        f"<i>You are receiving this update because you subscribed to watch alerts for this job posting on RecruitmentAlert.</i>"
+    )
+
+    sent_count = 0
+    now = timezone.now()
+
+    for watch in matching_watches:
+        if watch.user and watch.user.receive_alerts and watch.user.state != 'BANNED':
+            res = send_message(
+                chat_id=watch.user.telegram_id,
+                text=update_msg,
+                parse_mode='HTML'
+            )
+            if res:
+                watch.last_notified_at = now
+                watch.save(update_fields=['last_notified_at'])
+                sent_count += 1
+
+    if sent_count > 0:
+        logger.info(f"Dispatched watched job update for Alert {alert.id} to {sent_count} Telegram watchers.")
+    return sent_count
+
+
