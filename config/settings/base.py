@@ -237,6 +237,7 @@ LOGGING = {
 
 # ─── Telegram Bot ──────────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = config('TELEGRAM_BOT_TOKEN', default='')
+TELEGRAM_BOT_USERNAME = config('TELEGRAM_BOT_USERNAME', default='govalerts_bot')
 TELEGRAM_WEBHOOK_SECRET = config('TELEGRAM_WEBHOOK_SECRET', default='')
 TELEGRAM_WEBHOOK_URL = config('TELEGRAM_WEBHOOK_URL', default='')
 SUPER_ADMIN_TELEGRAM_IDS = config('SUPER_ADMIN_TELEGRAM_IDS', default='', cast=Csv(cast=int))
