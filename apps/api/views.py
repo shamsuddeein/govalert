@@ -24,6 +24,9 @@ from django.core.cache import cache
 from django.db import connection
 from django.db.models import Q, Sum, Avg, Count, Max, Min, F, Prefetch
 from django.shortcuts import get_object_or_404
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -36,8 +39,57 @@ from apps.api.serializers import (
     JobListSerializer, JobDetailSerializer,
     LiveFeedItemSerializer,
 )
+from apps.subscriptions.models import KeywordSubscription
 
 logger = logging.getLogger(__name__)
+
+
+class KeywordSubscriptionThrottle(AnonRateThrottle):
+    rate = '5/hour'
+
+
+class KeywordSubscriptionView(APIView):
+    """
+    POST /api/v1/keyword-subscriptions/
+    Body: {"email": str, "query_text": str}
+    Rate limited to max 5 requests per IP per hour.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [KeywordSubscriptionThrottle]
+
+    def post(self, request):
+        email = (request.data.get('email') or '').strip()
+        query_text = (request.data.get('query_text') or '').strip()
+
+        if not email:
+            return Response({'detail': 'Email address is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response({'detail': 'Please enter a valid email address.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        if not query_text:
+            return Response({'detail': 'Search keyword is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        if len(query_text) > 200:
+            return Response({'detail': 'Search keyword must be 200 characters or less.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        sub, created = KeywordSubscription.objects.get_or_create(
+            email=email.lower(),
+            query_text=query_text,
+            defaults={'is_active': True}
+        )
+        if not sub.is_active:
+            sub.is_active = True
+            sub.save(update_fields=['is_active'])
+
+        return Response({
+            'detail': f"You'll be notified at {sub.email} when a match appears.",
+            'email': sub.email,
+            'query_text': sub.query_text,
+        }, status=http_status.HTTP_201_CREATED)
+
 
 SYSTEM_STATUS_CACHE_KEY = 'api_system_status_v1'
 SYSTEM_STATUS_CACHE_TTL = 60  # seconds

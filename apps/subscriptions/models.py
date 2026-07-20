@@ -59,3 +59,29 @@ class Subscription(models.Model):
         self.is_active = True
         self.unsubscribed_at = None
         self.save(update_fields=['is_active', 'unsubscribed_at'])
+
+
+class KeywordSubscription(models.Model):
+    """
+    Captured search keyword subscription for instant email notifications when
+    a matching recruitment alert is approved.
+    """
+    email = models.EmailField()
+    query_text = models.CharField(max_length=200)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_matched_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'keyword_subscriptions'
+        ordering = ['-created_at']
+        verbose_name = 'Keyword Subscription'
+        verbose_name_plural = 'Keyword Subscriptions'
+        indexes = [
+            models.Index(fields=['email', 'is_active'], name='idx_kw_sub_email_active'),
+            models.Index(fields=['is_active'], name='idx_kw_sub_active'),
+        ]
+
+    def __str__(self):
+        return f"{self.email} → '{self.query_text}'"
+

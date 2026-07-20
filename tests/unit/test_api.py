@@ -205,4 +205,52 @@ def test_management_commands_audit_and_reconcile():
     call_command('reconcile_agency_data')
 
 
+@pytest.mark.django_db
+def test_keyword_subscription_api():
+    from django.core.cache import cache
+    from apps.subscriptions.models import KeywordSubscription
+
+    cache.clear()
+    client = APIClient()
+    url = reverse('api:keyword_subscriptions')
+
+    # Test invalid email
+    res = client.post(url, {'email': 'invalid-email', 'query_text': 'NNPC'}, format='json')
+    assert res.status_code == 400
+
+    # Test missing query
+    res = client.post(url, {'email': 'test@example.com', 'query_text': ''}, format='json')
+    assert res.status_code == 400
+
+    # Test valid submission
+    res = client.post(url, {'email': 'test@example.com', 'query_text': 'NNPC'}, format='json')
+    assert res.status_code == 201
+    assert "test@example.com" in res.data['detail']
+    assert KeywordSubscription.objects.filter(email='test@example.com', query_text='NNPC').exists()
+
+
+@pytest.mark.django_db
+def test_keyword_subscription_matching():
+    from apps.subscriptions.models import KeywordSubscription
+    from apps.subscriptions.services import match_keyword_subscriptions_for_alert
+    from apps.agencies.models import Agency
+    from apps.alerts.models import Alert, AlertStatus, EventType
+
+    KeywordSubscription.objects.create(email='subscriber@example.com', query_text='Customs', is_active=True)
+    agency = Agency.objects.create(name="Nigeria Customs Service", acronym="NCS", official_domains=["customs.gov.ng"], is_active=True)
+    alert = Alert.objects.create(
+        agency=agency,
+        title="Customs Officer Cadet Recruitment",
+        status=AlertStatus.APPROVED,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+
+    matches = match_keyword_subscriptions_for_alert(alert)
+    assert matches == 1
+
+    sub = KeywordSubscription.objects.get(email='subscriber@example.com')
+    assert sub.last_matched_at is not None
+
+
+
 

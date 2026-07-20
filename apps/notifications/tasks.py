@@ -91,6 +91,13 @@ def dispatch_alert(alert_id: int):
     text = format_alert_full(alert)
     keyboard = get_alert_keyboard(alert.id)
 
+    # Match and send emails to keyword subscribers
+    try:
+        from apps.subscriptions.services import match_keyword_subscriptions_for_alert
+        match_keyword_subscriptions_for_alert(alert)
+    except Exception as exc:
+        logger.warning(f"Failed to match keyword subscriptions for alert {alert_id}: {exc}")
+
     # Post to public alert channel
     try:
         from storage.events import post_public_alert

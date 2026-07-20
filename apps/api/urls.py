@@ -60,6 +60,9 @@ public_patterns = [
 
     # Health
     path('health/', views.HealthView.as_view(), name='health'),
+
+    # Keyword Subscriptions
+    path('keyword-subscriptions/', views.KeywordSubscriptionView.as_view(), name='keyword_subscriptions'),
 ]
 
 # ── Admin v1 ──────────────────────────────────────────────────────────────────

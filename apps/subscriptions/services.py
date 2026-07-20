@@ -103,3 +103,69 @@ def get_agency_subscriber_ids(agency: Agency) -> list[int]:
         .exclude(user__state='BANNED')
         .values_list('user_id', flat=True)
     )
+
+
+def match_keyword_subscriptions_for_alert(alert) -> int:
+    """
+    Check an approved Alert against active KeywordSubscription records.
+    Sends email for any case-insensitive substring match in alert title,
+    agency name / acronym, or positions text.
+    Updates last_matched_at on matched KeywordSubscription.
+    """
+    from django.core.mail import send_mail
+    from django.conf import settings
+    from django.utils import timezone
+    from .models import KeywordSubscription
+
+    active_subs = KeywordSubscription.objects.filter(is_active=True)
+    if not active_subs.exists():
+        return 0
+
+    agency_name = alert.agency.name if alert.agency else ""
+    agency_acronym = alert.agency.acronym if alert.agency else ""
+    alert_title = alert.title or ""
+    positions_text = alert.positions or getattr(alert, 'raw_text', '') or ""
+
+    # Combined searchable string
+    searchable_text = f"{alert_title} {agency_name} {agency_acronym} {positions_text}".lower()
+
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://www.recruitmentalert.com.ng').rstrip('/')
+    job_ref = getattr(alert, 'ref', alert.id)
+    job_url = f"{frontend_url}/jobs/{job_ref}"
+    deadline_str = alert.deadline.strftime("%d %b %Y") if getattr(alert, 'deadline', None) else "See portal for deadline"
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'alerts@recruitmentalert.com.ng')
+
+    match_count = 0
+    now = timezone.now()
+
+    for sub in active_subs:
+        kw = sub.query_text.strip().lower()
+        if kw and kw in searchable_text:
+            subject = f"New Matching Recruitment Alert: {alert_title}"
+            body = (
+                f"Hello,\n\n"
+                f"A new recruitment matching your keyword subscription '{sub.query_text}' was just verified:\n\n"
+                f"Position: {alert_title}\n"
+                f"Agency: {agency_name} ({agency_acronym})\n"
+                f"Deadline: {deadline_str}\n"
+                f"View details: {job_url}\n\n"
+                f"— RecruitmentAlert Intelligence Team\n"
+            )
+            try:
+                send_mail(
+                    subject=subject,
+                    message=body,
+                    from_email=from_email,
+                    recipient_list=[sub.email],
+                    fail_silently=True,
+                )
+                sub.last_matched_at = now
+                sub.save(update_fields=['last_matched_at'])
+                match_count += 1
+            except Exception as exc:
+                logger.warning(f"Failed to send keyword alert email to {sub.email}: {exc}")
+
+    if match_count > 0:
+        logger.info(f"Alert {alert.id} matched {match_count} keyword subscriptions.")
+    return match_count
+
