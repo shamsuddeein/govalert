@@ -49,6 +49,7 @@ public_patterns = [
     path('jobs/', views.JobListView.as_view(), name='job_list'),
     path('jobs/<str:ref>/', views.JobDetailView.as_view(), name='job_detail'),
     path('jobs/<str:ref>/verification/', views.JobVerificationView.as_view(), name='job_verification'),
+    path('jobs/<str:ref>/ai-summary/', views.JobAiSummaryView.as_view(), name='job_ai_summary'),
 
     # Saved Jobs (Me)
     path('me/saved-jobs/', views.SavedJobsView.as_view(), name='saved_jobs'),
@@ -78,6 +79,7 @@ admin_patterns = [
     path('alerts/<int:pk>/approve/', views.CustomAdminAlertApproveView.as_view(), name='admin_alert_approve'),
     path('alerts/<int:pk>/reject/', views.CustomAdminAlertRejectView.as_view(), name='admin_alert_reject'),
     path('alerts/<int:pk>/hold/', views.CustomAdminAlertHoldView.as_view(), name='admin_alert_hold'),
+    path('alerts/<int:pk>/ai-analyze/', views.CustomAdminAlertAiAnalyzeView.as_view(), name='admin_alert_ai_analyze'),
     path('alerts/<int:pk>/', views.CustomAdminAlertUpdateView.as_view(), name='admin_alert_update'),
 
     # Agency Management

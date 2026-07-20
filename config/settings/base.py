@@ -250,6 +250,10 @@ TELEGRAM_PUBLIC_CHANNEL_ID = config('TELEGRAM_PUBLIC_CHANNEL_ID', default='')
 # Private channel for nightly SQLite backup
 TELEGRAM_BACKUP_CHANNEL_ID = config('TELEGRAM_BACKUP_CHANNEL_ID', default='')
 
+# ─── OpenAI & AI Intelligence ───────────────────────────────────────────────────
+OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
+OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4o-mini')
+
 # ─── Gemini AI ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 GEMINI_MODEL = 'gemini-1.5-flash'

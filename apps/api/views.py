@@ -367,6 +367,58 @@ class JobVerificationView(APIView):
         return Response(data)
 
 
+class JobAiSummaryView(APIView):
+    """
+    GET /api/v1/jobs/{ref}/ai-summary/
+    Triggers/retrieves OpenAI-powered recruitment intelligence:
+    - Structured Summarization
+    - Scam Detection & Red Flags
+    - Government Verification Check
+    - Dynamic Trust Score
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, ref):
+        from apps.alerts.models import Alert, AlertStatus
+        from apps.detector.ai import (
+            summarize_recruitment_with_openai,
+            detect_scam_with_openai,
+            verify_recruitment_with_openai
+        )
+        from apps.detector.trust import calculate_trust_score
+
+        pk = _pk_from_ref(ref)
+        if pk is None:
+            return Response({'detail': 'Invalid job reference.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        try:
+            alert = Alert.objects.select_related('agency', 'portal').get(
+                pk=pk, status=AlertStatus.APPROVED
+            )
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Job not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        content = alert.raw_text or alert.description or alert.title or ""
+        agency_name = alert.agency.name if alert.agency else ""
+        source_url = alert.source_url or ""
+
+        summary = summarize_recruitment_with_openai(alert.title, agency_name, content)
+        scam_analysis = detect_scam_with_openai(agency_name, source_url, content)
+        verification = verify_recruitment_with_openai(agency_name, source_url, content)
+        computed_trust_score = calculate_trust_score(alert.agency, source_url, alert.ai_confidence or 85, content)
+
+        return Response({
+            'ref': ref,
+            'title': alert.title,
+            'agency': agency_name,
+            'summary': summary,
+            'scam_analysis': scam_analysis,
+            'verification': verification,
+            'trust_score': computed_trust_score,
+            'ai_engine': 'OpenAI (gpt-4o-mini)'
+        })
+
+
 # ─── System Status Endpoints ───────────────────────────────────────────────────
 
 class SystemStatusView(APIView):
@@ -1062,9 +1114,55 @@ class CustomAdminAlertRejectView(APIView):
 
         serializer = AdminAlertDetailSerializer(alert)
         return Response({
-            'detail': 'Alert rejected.',
+            'detail': 'Alert rejected successfully.',
             'alert': serializer.data
         })
+
+
+class CustomAdminAlertAiAnalyzeView(APIView):
+    """
+    POST /api/v1/admin/alerts/{pk}/ai-analyze/
+    Admin endpoint to execute full OpenAI scan on a pending/flagged alert.
+    Updates alert.trust_score, alert.ai_classification, alert.ai_red_flags.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, pk):
+        from apps.alerts.models import Alert
+        from apps.detector.ai import detect_scam_with_openai, verify_recruitment_with_openai
+        from apps.detector.trust import calculate_trust_score
+
+        try:
+            alert = Alert.objects.select_related('agency').get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Alert not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        content = alert.raw_text or alert.description or alert.title or ""
+        agency_name = alert.agency.name if alert.agency else ""
+        source_url = alert.source_url or ""
+
+        scam_res = detect_scam_with_openai(agency_name, source_url, content)
+        verification_res = verify_recruitment_with_openai(agency_name, source_url, content)
+        trust_score = calculate_trust_score(alert.agency, source_url, alert.ai_confidence or 85, content)
+
+        alert.trust_score = trust_score
+        alert.ai_red_flags = scam_res.get('red_flags', [])
+        if scam_res.get('is_scam'):
+            alert.ai_classification = 'FAKE'
+        elif verification_res.get('verification_status') == 'VERIFIED':
+            alert.ai_classification = 'REAL'
+        alert.save(update_fields=['trust_score', 'ai_red_flags', 'ai_classification'])
+
+        return Response({
+            'detail': 'Alert analyzed with OpenAI engine.',
+            'pk': alert.pk,
+            'trust_score': alert.trust_score,
+            'classification': alert.ai_classification,
+            'red_flags': alert.ai_red_flags,
+            'scam_analysis': scam_res,
+            'verification': verification_res
+        })
+
 
 
 class CustomAdminAlertHoldView(APIView):
