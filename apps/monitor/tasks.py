@@ -277,7 +277,7 @@ def daily_health_report():
     changes_detected = Snapshot.objects.filter(created_at__date=yesterday, has_change=True).count()
 
     report = (
-        "<b>GovAlert Daily Health Report</b>\n\n"
+        "<b>RecruitmentAlert Daily Health Report</b>\n\n"
         f"📅 Date: {yesterday.strftime('%d %B %Y')}\n"
         f"🔄 Total checks: {total_checks}\n"
         f"✅ Successful: {successful_checks}\n"

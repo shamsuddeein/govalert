@@ -4,7 +4,7 @@ Keeps message text out of handler logic for easy editing/translation.
 """
 
 WELCOME_MESSAGE = """
-<b>Welcome to GovAlert, {name}.</b>
+<b>Welcome to RecruitmentAlert, {name}.</b>
 
 This service will notify you as soon as any Nigerian government agency opens a new recruitment portal.
 
@@ -26,7 +26,7 @@ All openings are verified directly against official sources.
 """
 
 RETURNING_MESSAGE = """
-<b>Welcome back to GovAlert, {name}.</b>
+<b>Welcome back to RecruitmentAlert, {name}.</b>
 
 Your subscriptions are active. You will receive notifications as soon as new job postings are detected.
 
@@ -39,7 +39,7 @@ Your subscriptions are active. You will receive notifications as soon as new job
 CONSENT_MESSAGE = """
 <b>Data Privacy Notice</b>
 
-To provide this service, GovAlert stores the following information:
+To provide this service, RecruitmentAlert stores the following information:
 - Your Telegram ID and name
 - Your subscription preferences
 
@@ -51,7 +51,7 @@ Select 'I Agree' to proceed.
 """
 
 HELP_MESSAGE = """
-<b>GovAlert - Command List</b>
+<b>RecruitmentAlert - Command List</b>
 
 /start - Register and subscribe to all agencies
 /jobs - Latest 10 job openings
@@ -65,7 +65,7 @@ HELP_MESSAGE = """
 /report - Report a suspicious alert
 /help - Show this message
 
-GovAlert monitors official Nigerian government agency portals for updates.
+RecruitmentAlert monitors official Nigerian government agency portals for updates.
 """
 
 UNSUBSCRIBED_MESSAGE = """

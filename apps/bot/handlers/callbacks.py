@@ -53,7 +53,7 @@ def _handle_consent_agree(callback_query: dict):
         auto_subscribe_all(user)
         user.state = 'ACTIVE'
         user.save(update_fields=['state'])
-        answer_callback_query(callback_query['id'], text="✅ Welcome to GovAlert!")
+        answer_callback_query(callback_query['id'], text="✅ Welcome to RecruitmentAlert!")
         send_message(chat_id=chat_id, text=WELCOME_MESSAGE.format(name=user.display_name), parse_mode='HTML')
     except TelegramUser.DoesNotExist:
         logger.error(f"Consent callback from unknown user {telegram_id}")

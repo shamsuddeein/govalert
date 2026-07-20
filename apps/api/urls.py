@@ -1,5 +1,5 @@
 """
-GovAlert API — URL configuration.
+RecruitmentAlert API — URL configuration.
 
 Public v1 routes (no auth required):
   GET  /api/v1/agencies/

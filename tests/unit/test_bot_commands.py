@@ -45,7 +45,7 @@ def test_handle_start_new_user():
     mock_send.assert_called_once()
     args, kwargs = mock_send.call_args
     assert kwargs['chat_id'] == 12345
-    assert "Welcome to GovAlert" in kwargs['text']
+    assert "Welcome to RecruitmentAlert" in kwargs['text']
     assert 'reply_markup' in kwargs
     assert kwargs['reply_markup']['inline_keyboard'][0][0]['callback_data'] == 'show_settings'
 
@@ -75,4 +75,4 @@ def test_handle_start_returning_user():
     mock_send.assert_called_once()
     args, kwargs = mock_send.call_args
     assert kwargs['chat_id'] == 12345
-    assert "Welcome back to GovAlert" in kwargs['text']
+    assert "Welcome back to RecruitmentAlert" in kwargs['text']

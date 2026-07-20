@@ -1,5 +1,5 @@
 """
-GovAlert API v1 — Public endpoints for agencies, jobs, and system status.
+RecruitmentAlert API v1 — Public endpoints for agencies, jobs, and system status.
 
 Endpoint map:
   GET /api/v1/agencies/             → AgencyListView

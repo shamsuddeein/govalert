@@ -169,6 +169,8 @@ CORS_ALLOWED_ORIGINS = config(
         'http://localhost:3000',
         'http://localhost:8080',
         'http://localhost:8081',
+        'https://recruitmentalert.com.ng',
+        'https://www.recruitmentalert.com.ng',
         'https://govalert-henna.vercel.app',
     ]),
     cast=Csv()
@@ -177,7 +179,7 @@ CORS_ALLOWED_ORIGINS = config(
 # A wildcard regex allows any Vercel preview deploy to make credentialed requests.
 # To allow specific preview URLs, add them explicitly to CORS_ALLOWED_ORIGINS via env var.
 CORS_ALLOW_CREDENTIALS = True
-FRONTEND_URL = config('FRONTEND_URL', default='https://govalert-henna.vercel.app')
+FRONTEND_URL = config('FRONTEND_URL', default='https://www.recruitmentalert.com.ng')
 
 # ─── Static & Media ────────────────────────────────────────────────────────────
 STATIC_URL = '/static/'

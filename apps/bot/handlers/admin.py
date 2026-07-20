@@ -42,7 +42,7 @@ def handle_admin(message: dict):
     portals_down = Portal.objects.filter(status=PortalStatus.OFFLINE, is_active=True).count()
 
     text = (
-        f"🔧 <b>GovAlert Admin Panel</b>\n\n"
+        f"🔧 <b>RecruitmentAlert Admin Panel</b>\n\n"
         f"👥 Active Users: <b>{total_users:,}</b>\n"
         f"⏳ Alerts Pending Review: <b>{pending_alerts}</b>\n"
         f"❌ Portals Down: <b>{portals_down}</b>\n\n"
@@ -114,7 +114,7 @@ def handle_stats(message: dict):
     failed_today = Notification.objects.filter(queued_at__gte=today_start, status=NotificationStatus.FAILED).count()
 
     text = (
-        f"📊 <b>GovAlert Statistics</b>\n\n"
+        f"📊 <b>RecruitmentAlert Statistics</b>\n\n"
         f"👥 Total Users: <b>{total_users:,}</b>\n"
         f"✅ Active Users: <b>{active_users:,}</b>\n"
         f"🏛️ Agencies Monitored: <b>{Agency.objects.filter(is_active=True).count()}</b>\n"
