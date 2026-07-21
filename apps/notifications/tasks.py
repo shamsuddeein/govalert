@@ -63,7 +63,6 @@ def dispatch_alert(alert_id: int):
     Creates Notification entries for all matching users and sends messages bulk.
     """
     from apps.alerts.models import Alert
-    from apps.subscriptions.models import Subscription
     from apps.accounts.models import TelegramUser, UserState
 
     logger.info(f"Starting dispatch for alert {alert_id}...")
@@ -82,10 +81,18 @@ def dispatch_alert(alert_id: int):
         .values_list('user_id', flat=True)
     )
 
-    # General Feed Users: Active TelegramUsers with ZERO active watches
-    general_users = TelegramUser.objects.filter(
-        receive_alerts=True
-    ).exclude(state='BANNED').exclude(id__in=curated_user_ids)
+    # General-feed users still honour consent, account state, and agency-level
+    # unsubscribe preferences. A job watch only changes feed mode; it never
+    # overrides the user's privacy or subscription choices.
+    eligible_users = TelegramUser.objects.filter(
+        receive_alerts=True,
+        state=UserState.ACTIVE,
+        consented_to_data_policy=True,
+    )
+    general_users = eligible_users.filter(
+        subscriptions__agency=alert.agency,
+        subscriptions__is_active=True,
+    ).exclude(pk__in=curated_user_ids).distinct()
 
     is_update = bool(alert.recruitment_event and alert.recruitment_event.previous_event)
 
@@ -106,7 +113,7 @@ def dispatch_alert(alert_id: int):
             TelegramJobWatch.objects.filter(alert_id__in=chain_alert_ids, is_active=True)
             .values_list('user_id', flat=True)
         )
-        watched_users = TelegramUser.objects.filter(id__in=watchers_user_ids, receive_alerts=True).exclude(state='BANNED')
+        watched_users = eligible_users.filter(pk__in=watchers_user_ids)
 
         # Target users = General Feed users + Watchers of this specific recruitment chain
         users = list(set(general_users).union(set(watched_users)))
@@ -120,9 +127,8 @@ def dispatch_alert(alert_id: int):
 
     # Match and send emails to keyword subscribers
     try:
-        from apps.subscriptions.services import match_keyword_subscriptions_for_alert, notify_job_watchers
+        from apps.subscriptions.services import match_keyword_subscriptions_for_alert
         match_keyword_subscriptions_for_alert(alert)
-        notify_job_watchers(alert)
     except Exception as exc:
         logger.warning(f"Failed to match subscriptions/watchers for alert {alert_id}: {exc}")
 

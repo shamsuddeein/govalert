@@ -95,7 +95,8 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     )
 
     # 6. Check if fingerprint already exists (detects duplicates and updates)
-    existing_event = RecruitmentEvent.objects.filter(fingerprint=fingerprint).first()
+    # The newest event is the current state of this recruitment's update chain.
+    existing_event = RecruitmentEvent.objects.filter(fingerprint=fingerprint).order_by('-created_at').first()
     changes_dict = {}  # Track what changed for DecisionLog
     
     if existing_event:
@@ -120,18 +121,23 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
                 logger.warning(f"Failed to increment duplicate counter: {e}")
             return None
         
-        # It's an update - update the existing event and create an alert for the changes
-        logger.info(f"Recruitment updated (fingerprint={fingerprint[:8]}...). Updating event and creating alert.")
-        
-        # Update the existing event's details and status
-        existing_event.deadline = deadline
-        existing_event.positions = positions
-        existing_event.title = title
-        existing_event.status = EventStatus.UPDATED
-        existing_event.save(update_fields=['deadline', 'positions', 'title', 'status'])
-        
-        # Use the existing event (don't create a new one)
-        rec_event = existing_event
+        # Preserve history: each meaningful change becomes a new event and Alert
+        # linked to the prior state. This also gives notification deduplication a
+        # new alert id for each update.
+        logger.info(f"Recruitment updated (fingerprint={fingerprint[:8]}...). Creating update event and alert.")
+        event_suffix = uuid.uuid4().hex[:6]
+        rec_event = RecruitmentEvent.objects.create(
+            event_id=f"evt_{timezone.now().strftime('%Y%m%d')}_{event_suffix}",
+            fingerprint=fingerprint,
+            status=EventStatus.UPDATED,
+            previous_event=existing_event,
+            portal=portal,
+            event_type=ai_res.get('event_type') or 'RECRUITMENT_OPEN',
+            content_hash=compute_content_hash(content),
+            title=title,
+            deadline=deadline,
+            positions=positions,
+        )
         event_status = EventStatus.UPDATED
     else:
         # New recruitment
@@ -233,10 +239,9 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     except Exception as exc:
         logger.warning(f"Failed to post to event channel: {exc}")
 
-    # 10. Send notifications only for NEW events (not updates)
-    if alert.status == AlertStatus.APPROVED and rec_event.status == EventStatus.NEW and alert_created:
+    # Approval is intentionally a separate human action. The admin approval
+    # endpoint dispatches both new openings and update events.
+    if alert.status == AlertStatus.APPROVED and alert_created:
         dispatch_alert.delay(alert.id)
-    elif rec_event.status == EventStatus.UPDATED:
-        logger.info(f"Recruitment updated (alert {alert.id}). Update notifications optional.")
 
     return alert

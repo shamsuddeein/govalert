@@ -56,10 +56,10 @@ def generate_fingerprint(
     """
     normalized = normalize_recruitment_data(title, deadline, positions, url, agency_name)
     
-    # Fingerprint ONLY includes core identifying fields (NOT deadline which can change)
+    # Fingerprint only contains immutable recruitment identity fields. Deadline and
+    # positions are deliberately excluded so either can produce an update event.
     payload = f"""agency={normalized['agency']}
 title={normalized['title']}
-positions={normalized['positions']}
 url={normalized['url']}"""
     
     fingerprint = hashlib.sha256(payload.encode('utf-8')).hexdigest()

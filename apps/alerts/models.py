@@ -42,8 +42,8 @@ class RecruitmentEvent(models.Model):
         help_text="Unique event code, e.g. evt_20260711_000412"
     )
     fingerprint = models.CharField(
-        max_length=64, unique=True, db_index=True,
-        help_text="SHA-256 fingerprint of recruitment identifying data. Used for deduplication."
+        max_length=64, db_index=True,
+        help_text="SHA-256 fingerprint of the recruitment identity. Multiple events may share it as an update chain."
     )
     status = models.CharField(
         max_length=20,

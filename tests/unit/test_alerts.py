@@ -65,3 +65,29 @@ def test_create_alert_from_scrape_fallback(mock_send, mock_ai):
     assert alert_fraud.ai_classification == 'UNCERTAIN'
     assert alert_fraud.ai_confidence == 30
     assert 'FRAUD_KEYWORDS_DETECTED' in alert_fraud.ai_red_flags
+
+
+@pytest.mark.django_db
+@patch('apps.alerts.services.classify_recruitment_with_ai')
+def test_position_change_creates_linked_update_event(mock_ai):
+    """A changed position must stay in the recruitment chain, not become a new job."""
+    mock_ai.return_value = {
+        'classification': 'REAL', 'confidence': 90,
+        'event_type': 'RECRUITMENT_OPEN', 'red_flags': [],
+        'extracted': {'positions': 'Officer', 'deadline': '2026-08-01', 'requirements': 'Check portal'},
+    }
+    agency = Agency.objects.create(name='Nigeria Customs Service', acronym='NCS', official_domains=['customs.gov.ng'])
+    portal = Portal.objects.create(agency=agency, name='Careers', url='https://customs.gov.ng/careers')
+
+    first = create_alert_from_scrape(
+        portal, 'Recruitment is open. Apply now.',
+        {'positions': 'Officer', 'deadline': '2026-08-01'},
+    )
+    update = create_alert_from_scrape(
+        portal, 'Recruitment is open. Apply now.',
+        {'positions': 'Officer, Inspector', 'deadline': '2026-08-01'},
+    )
+
+    assert update.pk != first.pk
+    assert update.recruitment_event.previous_event_id == first.recruitment_event_id
+    assert update.recruitment_event.fingerprint == first.recruitment_event.fingerprint

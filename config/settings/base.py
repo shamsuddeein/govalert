@@ -252,7 +252,7 @@ TELEGRAM_BACKUP_CHANNEL_ID = config('TELEGRAM_BACKUP_CHANNEL_ID', default='')
 
 # ─── OpenAI & AI Intelligence ───────────────────────────────────────────────────
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
-OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4o-mini')
+OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-5.6')
 
 # ─── Gemini AI ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
@@ -346,6 +346,5 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=3, minute=0),
     },
 }
-
 
 
