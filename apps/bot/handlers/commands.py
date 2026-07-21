@@ -49,11 +49,21 @@ def _get_or_create_user(message: dict):
     return user, created
 
 
+def _pk_from_ref(ref: str) -> int | None:
+    if '-GA' in ref:
+        try:
+            return int(ref.split('-GA')[0])
+        except ValueError:
+            return None
+    if ref.isdigit():
+        return int(ref)
+    return None
+
+
 def handle_start(message: dict):
     """
     /start — Register user + auto-subscribe to ALL agencies immediately.
-    Supports Telegram Deep Linking payload `/start watch_{job_ref}` to watch
-    updates for a specific recruitment alert chain.
+    Supports Telegram Deep Linking payload `/start general` or `/start watch_{job_ref}`.
     """
     from apps.subscriptions.services import auto_subscribe_all
     from apps.subscriptions.models import TelegramJobWatch
@@ -78,14 +88,27 @@ def handle_start(message: dict):
     parts = text_content.split()
     payload = parts[1] if len(parts) > 1 else ''
 
+    if payload == 'general':
+        # Reset user to general feed mode
+        TelegramJobWatch.objects.filter(user=user, is_active=True).update(is_active=False)
+        send_message(
+            chat_id=chat_id,
+            text=(
+                f"<b>🔔 General Recruitment Feed Active!</b>\n\n"
+                f"Hello {user.display_name}! You are set to receive <b>all verified Nigerian government recruitment alerts</b> across all 41 monitored MDA portals in real-time."
+            ),
+            parse_mode='HTML',
+            reply_markup=get_start_keyboard()
+        )
+        return
+
     if payload.startswith('watch_'):
         job_ref = payload.replace('watch_', '').strip()
         alert = None
         
-        if '-GA' in job_ref or job_ref.isdigit():
-            pk_str = job_ref.split('-GA')[0] if '-GA' in job_ref else job_ref
-            if pk_str.isdigit():
-                alert = Alert.objects.filter(pk=int(pk_str)).first()
+        pk = _pk_from_ref(job_ref)
+        if pk:
+            alert = Alert.objects.filter(pk=pk).first()
 
         if not alert and job_ref:
             alert = Alert.objects.filter(title__icontains=job_ref).first()
@@ -103,14 +126,16 @@ def handle_start(message: dict):
             frontend_url = getattr(settings, 'FRONTEND_URL', 'https://www.recruitmentalert.com.ng').rstrip('/')
             web_url = f"{frontend_url}/jobs/{getattr(alert, 'ref', alert.id)}"
 
+            agency_name = alert.agency.name if alert.agency else "Official Agency"
+
             watch_msg = (
                 f"<b>🔔 Job Watch Activated!</b>\n\n"
-                f"You are now watching updates for <b>{alert.title}</b> ({alert.agency.acronym}).\n\n"
-                f"We will send you instant alerts whenever there are updates (deadline extensions, shortlists, screening notices, portal status changes) for this recruitment!\n\n"
-                f"<b>Web Page:</b> <a href='{web_url}'>{web_url}</a>"
+                f"You're now watching <b>'{alert.title}'</b> at {agency_name}.\n"
+                f"You'll be notified if this recruitment's deadline changes, a shortlist is published, or it closes.\n\n"
+                f"<b>Note:</b> Since you have an active watch, you will only receive alerts for jobs you've watched, not the general feed. Use /allalerts anytime to switch back to receiving every verified alert instead."
             )
             send_message(chat_id=chat_id, text=watch_msg, parse_mode='HTML')
-            logger.info(f"User {user.telegram_id} is now watching job {alert.id}")
+            logger.info(f"User {user.telegram_id} is watching job #{alert.id}")
             return
 
     if created:
@@ -125,6 +150,127 @@ def handle_start(message: dict):
         user.mark_active()
         send_message(chat_id=chat_id, text=RETURNING_MESSAGE.format(name=user.display_name), parse_mode='HTML')
         logger.info(f"Returning user {user.telegram_id} re-started bot.")
+
+
+def handle_allalerts(message: dict):
+    """
+    /allalerts — Deactivates all active TelegramJobWatch records for this user,
+    confirming: "You're now receiving all verified alerts again."
+    """
+    from apps.subscriptions.models import TelegramJobWatch
+    from apps.notifications.sender import send_message
+
+    user, _ = _get_or_create_user(message)
+    if not user:
+        return
+
+    updated_count = TelegramJobWatch.objects.filter(user=user, is_active=True).update(is_active=False)
+    chat_id = message['chat']['id']
+
+    send_message(
+        chat_id=chat_id,
+        text="<b>🔔 General Feed Restored</b>\n\nYou're now receiving all verified alerts again.",
+        parse_mode='HTML'
+    )
+    logger.info(f"User {user.telegram_id} reset watches to general feed (deactivated {updated_count} watches).")
+
+
+def handle_mybookmarks(message: dict):
+    """
+    /mybookmarks — List this user's active watches with instructions to reply or use /unwatch.
+    """
+    from apps.subscriptions.models import TelegramJobWatch
+    from apps.notifications.sender import send_message
+
+    user, _ = _get_or_create_user(message)
+    if not user:
+        return
+
+    chat_id = message['chat']['id']
+    active_watches = TelegramJobWatch.objects.filter(user=user, is_active=True).select_related('alert', 'alert__agency')
+
+    if not active_watches.exists():
+        send_message(
+            chat_id=chat_id,
+            text="<b>🔖 You have no active job watches.</b>\n\nYou are currently receiving the <b>general feed</b> of all verified alerts. Tap '🔔 Get alerts for this job' on any recruitment page on RecruitmentAlert to watch specific postings!",
+            parse_mode='HTML'
+        )
+        return
+
+    items = []
+    for w in active_watches:
+        acronym = w.alert.agency.acronym if w.alert.agency else "MDA"
+        items.append(f"• <b>#{w.alert.pk}</b>: {w.alert.title} ({acronym}) — <i>Active Watch</i>")
+
+    watches_text = "\n".join(items)
+    reply_msg = (
+        f"<b>🔖 Your Active Job Watches ({len(active_watches)})</b>\n\n"
+        f"{watches_text}\n\n"
+        f"<i>To stop watching a specific job, use:</i>\n"
+        f"<code>/unwatch [job_id]</code>\n\n"
+        f"<i>To switch back to receiving all verified alerts:</i>\n"
+        f"<code>/allalerts</code>"
+    )
+    send_message(chat_id=chat_id, text=reply_msg, parse_mode='HTML')
+
+
+def handle_unwatch(message: dict):
+    """
+    /unwatch {id} — Deactivate a specific watch, confirm removal.
+    """
+    from apps.subscriptions.models import TelegramJobWatch
+    from apps.alerts.models import Alert
+    from apps.notifications.sender import send_message
+
+    user, _ = _get_or_create_user(message)
+    if not user:
+        return
+
+    chat_id = message['chat']['id']
+    text = (message.get('text') or '').strip()
+    parts = text.split(maxsplit=1)
+
+    if len(parts) < 2:
+        send_message(
+            chat_id=chat_id,
+            text="<b>Usage:</b> <code>/unwatch [job_id]</code>\n\nExample: <code>/unwatch 102</code>\nType /mybookmarks to see your active watches.",
+            parse_mode='HTML'
+        )
+        return
+
+    target_ref = parts[1].strip()
+    pk = _pk_from_ref(target_ref)
+
+    watch = None
+    if pk:
+        watch = TelegramJobWatch.objects.filter(user=user, alert_id=pk, is_active=True).first()
+
+    if not watch and target_ref:
+        watch = TelegramJobWatch.objects.filter(user=user, alert__title__icontains=target_ref, is_active=True).first()
+
+    if not watch:
+        send_message(
+            chat_id=chat_id,
+            text=f"⚠️ No active watch found for '{target_ref}'. Type /mybookmarks to see your active watches.",
+            parse_mode='HTML'
+        )
+        return
+
+    watch.is_active = False
+    watch.save(update_fields=['is_active'])
+
+    remaining_watches = TelegramJobWatch.objects.filter(user=user, is_active=True).count()
+    if remaining_watches == 0:
+        mode_note = "\n\nYou now have 0 active watches. You have been switched back to the general feed for all verified alerts!"
+    else:
+        mode_note = f"\n\nYou have {remaining_watches} remaining active watch(es)."
+
+    send_message(
+        chat_id=chat_id,
+        text=f"<b>❌ Watch Removed</b>\n\nYou are no longer watching <b>{watch.alert.title}</b>.{mode_note}",
+        parse_mode='HTML'
+    )
+    logger.info(f"User {user.telegram_id} unwatched job {watch.alert.id}")
 
 
 def handle_help(message: dict):

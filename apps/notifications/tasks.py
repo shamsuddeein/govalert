@@ -68,24 +68,51 @@ def dispatch_alert(alert_id: int):
 
     logger.info(f"Starting dispatch for alert {alert_id}...")
     try:
-        alert = Alert.objects.get(pk=alert_id)
+        alert = Alert.objects.select_related('agency', 'recruitment_event').get(pk=alert_id)
     except Alert.DoesNotExist:
         logger.error(f"Alert {alert_id} not found for dispatch.")
         return
 
-    # Fetch matching active users who are subscribed to the alert's agency.
-    # NDPR compliance: only dispatch to users who have given explicit consent
-    # (tapped [I Agree] during /start). Article 2.2 requires lawful basis.
-    subscriptions = Subscription.objects.filter(
-        agency=alert.agency,
-        is_active=True,
-        user__state=UserState.ACTIVE,
-        user__consented_to_data_policy=True,
-    ).select_related('user')
+    from apps.subscriptions.models import TelegramJobWatch
+    from apps.accounts.models import TelegramUser
 
-    users = [sub.user for sub in subscriptions]
+    # Identify all users with at least 1 active job watch (curated mode users)
+    curated_user_ids = set(
+        TelegramJobWatch.objects.filter(is_active=True)
+        .values_list('user_id', flat=True)
+    )
+
+    # General Feed Users: Active TelegramUsers with ZERO active watches
+    general_users = TelegramUser.objects.filter(
+        receive_alerts=True
+    ).exclude(state='BANNED').exclude(id__in=curated_user_ids)
+
+    is_update = bool(alert.recruitment_event and alert.recruitment_event.previous_event)
+
+    if not is_update:
+        # BRAND NEW RECRUITMENT: Send ONLY to general feed users (no active watches)
+        users = list(general_users)
+    else:
+        # UPDATE TO AN EXISTING RECRUITMENT:
+        # Find watchers of any Alert in the previous_event chain
+        chain_alert_ids = {alert.id}
+        prev = alert.recruitment_event.previous_event
+        while prev:
+            for linked_alert in prev.alerts.all():
+                chain_alert_ids.add(linked_alert.id)
+            prev = prev.previous_event
+
+        watchers_user_ids = set(
+            TelegramJobWatch.objects.filter(alert_id__in=chain_alert_ids, is_active=True)
+            .values_list('user_id', flat=True)
+        )
+        watched_users = TelegramUser.objects.filter(id__in=watchers_user_ids, receive_alerts=True).exclude(state='BANNED')
+
+        # Target users = General Feed users + Watchers of this specific recruitment chain
+        users = list(set(general_users).union(set(watched_users)))
+
     if not users:
-        logger.info(f"No active subscribers for agency {alert.agency.acronym}. Dispatch skipped.")
+        logger.info(f"No target subscribers for alert #{alert.id} ({alert.agency.acronym}). Dispatch skipped.")
         return
 
     text = format_alert_full(alert)

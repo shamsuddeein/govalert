@@ -120,3 +120,40 @@ def test_notify_job_watchers():
         mock_send.assert_called_once()
         assert "Watched Recruitment Update" in mock_send.call_args[1]['text']
 
+
+@pytest.mark.django_db
+def test_allalerts_mybookmarks_unwatch():
+    from apps.alerts.models import Alert, AlertStatus, EventType
+    from apps.subscriptions.models import TelegramJobWatch
+    from apps.bot.handlers.commands import handle_allalerts, handle_mybookmarks, handle_unwatch
+
+    agency = Agency.objects.create(name="Federal Inland Revenue Service", acronym="FIRS", is_active=True)
+    alert = Alert.objects.create(pk=777, agency=agency, title="FIRS Tax Officer 2026", status=AlertStatus.APPROVED, event_type=EventType.RECRUITMENT_OPEN)
+
+    user = TelegramUser.objects.create(telegram_id=77777, first_name="Bookmarker", state=UserState.ACTIVE)
+    watch = TelegramJobWatch.objects.create(user=user, alert=alert, is_active=True)
+
+    msg = {'chat': {'id': 77777}, 'from': {'id': 77777, 'first_name': 'Bookmarker'}}
+
+    # Test /mybookmarks
+    with patch('apps.notifications.sender.send_message') as mock_send:
+        handle_mybookmarks(msg)
+        assert "Your Active Job Watches" in mock_send.call_args[1]['text']
+        assert "FIRS Tax Officer 2026" in mock_send.call_args[1]['text']
+
+    # Test /unwatch 777
+    msg_unwatch = {'chat': {'id': 77777}, 'from': {'id': 77777, 'first_name': 'Bookmarker'}, 'text': '/unwatch 777'}
+    with patch('apps.notifications.sender.send_message') as mock_send:
+        handle_unwatch(msg_unwatch)
+        assert "Watch Removed" in mock_send.call_args[1]['text']
+        assert not TelegramJobWatch.objects.filter(pk=watch.pk, is_active=True).exists()
+
+    # Test /allalerts
+    watch.is_active = True
+    watch.save()
+    with patch('apps.notifications.sender.send_message') as mock_send:
+        handle_allalerts(msg)
+        assert "General Feed Restored" in mock_send.call_args[1]['text']
+        assert not TelegramJobWatch.objects.filter(user=user, is_active=True).exists()
+
+

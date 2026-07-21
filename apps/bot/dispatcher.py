@@ -60,7 +60,8 @@ def _handle_message(message: dict) -> None:
         handle_start, handle_help, handle_unsubscribe,
         handle_agencies, handle_jobs, handle_history,
         handle_status, handle_settings, handle_search,
-        handle_latest, handle_report,
+        handle_latest, handle_report, handle_allalerts,
+        handle_mybookmarks, handle_unwatch,
     )
     from apps.bot.handlers.admin import handle_admin, handle_broadcast, handle_stats
 
@@ -76,6 +77,10 @@ def _handle_message(message: dict) -> None:
         '/search': handle_search,
         '/latest': handle_latest,
         '/report': handle_report,
+        '/allalerts': handle_allalerts,
+        '/mybookmarks': handle_mybookmarks,
+        '/mywatches': handle_mybookmarks,
+        '/unwatch': handle_unwatch,
         '/admin': handle_admin,
         '/broadcast': handle_broadcast,
         '/stats': handle_stats,
