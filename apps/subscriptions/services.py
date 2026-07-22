@@ -223,3 +223,62 @@ def notify_job_watchers(alert) -> int:
     return sent_count
 
 
+def dispatch_web_user_emails(alert) -> int:
+    """
+    Send instant email alerts to all active WebUser accounts with a valid email.
+    """
+    from django.core.mail import send_mail
+    from django.conf import settings
+    from apps.accounts.models import WebUser
+
+    web_users = WebUser.objects.filter(user__is_active=True).exclude(user__email='').select_related('user')
+    if not web_users.exists():
+        return 0
+
+    agency_name = alert.agency.name if alert.agency else "Federal Government Agency"
+    agency_acronym = alert.agency.acronym if alert.agency else "GOV"
+    alert_title = alert.title or "New Recruitment Opening"
+    deadline_str = alert.deadline or "See portal for details"
+    positions_str = alert.positions or "Multiple Positions"
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://www.recruitmentalert.com.ng').rstrip('/')
+    job_ref = getattr(alert, 'ref', alert.id)
+    job_url = f"{frontend_url}/jobs/{job_ref}"
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'alerts@recruitmentalert.com.ng')
+
+    sent_count = 0
+    subject = f"🔔 Verified Recruitment Alert: {alert_title}"
+
+    for web_user in web_users:
+        email = web_user.user.email
+        if not email:
+            continue
+
+        body = (
+            f"Hello {web_user.user.first_name or web_user.user.username},\n\n"
+            f"A new verified recruitment notice has just been published on RecruitmentAlert:\n\n"
+            f"Notice: {alert_title}\n"
+            f"Agency: {agency_name} ({agency_acronym})\n"
+            f"Positions: {positions_str}\n"
+            f"Deadline: {deadline_str}\n\n"
+            f"View official details and apply: {job_url}\n\n"
+            f"— RecruitmentAlert Intelligence Team\n"
+            f"https://www.recruitmentalert.com.ng\n"
+        )
+        try:
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=from_email,
+                recipient_list=[email],
+                fail_silently=True,
+            )
+            sent_count += 1
+        except Exception as exc:
+            logger.warning(f"Failed to send web user email alert to {email}: {exc}")
+
+    if sent_count > 0:
+        logger.info(f"Dispatched instant email alert for Alert {alert.id} to {sent_count} registered Web Users.")
+    return sent_count
+
+
+

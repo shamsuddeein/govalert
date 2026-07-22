@@ -1,12 +1,14 @@
 import logging
 from django.utils import timezone
 from datetime import timedelta
+from django.db.models import Q
 from apps.notifications.models import Notification, NotificationStatus
 from apps.notifications.sender import send_message
 from core.exceptions import TelegramDeliveryException
 from apps.bot.templates import format_alert_full
 from apps.bot.keyboards import get_alert_keyboard
 from celery import shared_task
+
 
 logger = logging.getLogger(__name__)
 
@@ -84,24 +86,29 @@ def dispatch_alert(alert_id: int):
     # General-feed users still honour consent, account state, and agency-level
     # unsubscribe preferences. A job watch only changes feed mode; it never
     # overrides the user's privacy or subscription choices.
+    from apps.subscriptions.models import Subscription
+
     eligible_users = TelegramUser.objects.filter(
         receive_alerts=True,
         state=UserState.ACTIVE,
         consented_to_data_policy=True,
     )
+
+    unsubscribed_user_ids = set(
+        Subscription.objects.filter(agency=alert.agency, is_active=False)
+        .values_list('user_id', flat=True)
+    )
+
     general_users = eligible_users.filter(
-        subscriptions__agency=alert.agency,
-        subscriptions__is_active=True,
-    ).exclude(pk__in=curated_user_ids).distinct()
+        Q(subscriptions__agency=alert.agency, subscriptions__is_active=True) |
+        Q(subscriptions__isnull=True)
+    ).exclude(pk__in=unsubscribed_user_ids).exclude(pk__in=curated_user_ids).distinct()
 
     is_update = bool(alert.recruitment_event and alert.recruitment_event.previous_event)
 
     if not is_update:
-        # BRAND NEW RECRUITMENT: Send ONLY to general feed users (no active watches)
         users = list(general_users)
     else:
-        # UPDATE TO AN EXISTING RECRUITMENT:
-        # Find watchers of any Alert in the previous_event chain
         chain_alert_ids = {alert.id}
         prev = alert.recruitment_event.previous_event
         while prev:
@@ -114,23 +121,25 @@ def dispatch_alert(alert_id: int):
             .values_list('user_id', flat=True)
         )
         watched_users = eligible_users.filter(pk__in=watchers_user_ids)
-
-        # Target users = General Feed users + Watchers of this specific recruitment chain
         users = list(set(general_users).union(set(watched_users)))
 
+    # Dispatch web email notifications to registered Web users
+    try:
+        from apps.subscriptions.services import dispatch_web_user_emails, match_keyword_subscriptions_for_alert, notify_job_watchers
+        dispatch_web_user_emails(alert)
+        match_keyword_subscriptions_for_alert(alert)
+        if is_update:
+            notify_job_watchers(alert)
+    except Exception as exc:
+        logger.warning(f"Failed multi-channel subscriber dispatch for alert {alert.id}: {exc}")
+
+
     if not users:
-        logger.info(f"No target subscribers for alert #{alert.id} ({alert.agency.acronym}). Dispatch skipped.")
+        logger.info(f"No active Telegram subscribers for alert #{alert.id} ({alert.agency.acronym}). Dispatch skipped.")
         return
 
     text = format_alert_full(alert)
     keyboard = get_alert_keyboard(alert.id)
-
-    # Match and send emails to keyword subscribers
-    try:
-        from apps.subscriptions.services import match_keyword_subscriptions_for_alert
-        match_keyword_subscriptions_for_alert(alert)
-    except Exception as exc:
-        logger.warning(f"Failed to match subscriptions/watchers for alert {alert_id}: {exc}")
 
     # Post to public alert channel
     try:
@@ -138,6 +147,7 @@ def dispatch_alert(alert_id: int):
         post_public_alert(text)
     except Exception as exc:
         logger.warning(f"Failed to post to public alert channel: {exc}")
+
 
     success_count = 0
     failure_count = 0

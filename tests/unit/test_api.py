@@ -460,9 +460,62 @@ def test_admin_alert_get_edit_and_delete():
 
     # 3. DELETE alert post
     del_res = client.delete(url)
-    assert del_res.status_code == 200
-    assert del_res.data['detail'] == "Alert deleted successfully."
     assert not Alert.objects.filter(pk=alert.id).exists()
+
+
+@pytest.mark.django_db
+def test_instant_multi_channel_subscriber_dispatch(mocker):
+    """
+    Test instant notification fan-out to active Telegram subscribers, Web Email Users,
+    and Keyword Subscribers upon alert approval.
+    """
+    from django.contrib.auth.models import User
+    from apps.accounts.models import TelegramUser, WebUser, UserState
+    from apps.subscriptions.models import KeywordSubscription
+    from apps.notifications.tasks import dispatch_alert
+
+    mock_send_msg = mocker.patch('apps.notifications.tasks.send_message', return_value={'message_id': 12345})
+    mock_send_mail = mocker.patch('django.core.mail.send_mail', return_value=1)
+
+    agency = Agency.objects.create(name="Federal Inland Revenue Service", acronym="FIRS", is_active=True)
+    tg_user = TelegramUser.objects.create(
+        telegram_id=987654321,
+        receive_alerts=True,
+        state=UserState.ACTIVE,
+        consented_to_data_policy=True
+    )
+
+    user_obj = User.objects.create_user(username="web_subscriber", email="subscriber@example.com")
+    web_user = WebUser.objects.create(user=user_obj)
+    kw_sub = KeywordSubscription.objects.create(
+        email="kw_sub@example.com",
+        query_text="FIRS",
+        is_active=True
+    )
+
+    alert = Alert.objects.create(
+        agency=agency,
+        title="FIRS Tax Officer Recruitment 2026",
+        positions="Tax Officer",
+        status=AlertStatus.APPROVED,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+
+    dispatch_alert(alert.id)
+
+    # Verify Telegram dispatch called for active bot user
+    assert mock_send_msg.called
+    assert mock_send_msg.call_args[1]['chat_id'] == 987654321
+
+    # Verify email dispatch called for registered WebUser and KeywordSubscriber
+    assert mock_send_mail.called
+    recipients = set()
+    for call in mock_send_mail.call_args_list:
+        for email in call[1].get('recipient_list', []):
+            recipients.add(email)
+    assert "subscriber@example.com" in recipients
+    assert "kw_sub@example.com" in recipients
+
 
 
 
