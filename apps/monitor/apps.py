@@ -38,14 +38,18 @@ class MonitorConfig(AppConfig):
         is_manage_py = any(arg.endswith('manage.py') for arg in sys.argv)
         is_runserver = 'runserver' in sys.argv
 
-        if is_manage_py and is_runserver:
-            if os.environ.get('RUN_MAIN') == 'true':
+        try:
+            if is_manage_py and is_runserver:
+                if os.environ.get('RUN_MAIN') == 'true':
+                    from config import scheduler
+                    scheduler.start()
+            elif not is_manage_py:
+                # Running under ASGI/WSGI (production)
                 from config import scheduler
                 scheduler.start()
-        elif not is_manage_py:
-            # Running under ASGI/WSGI (production)
-            from config import scheduler
-            scheduler.start()
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Could not start background scheduler: %s", exc)
 
     @staticmethod
     def _configure_sqlite_wal():

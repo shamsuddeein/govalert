@@ -26,7 +26,7 @@ _scheduler = None
 
 
 def get_scheduler() -> BackgroundScheduler:
-    """Return the singleton scheduler instance."""
+    """Return the singleton scheduler instance with in-memory jobstore."""
     global _scheduler
     if _scheduler is None:
         from apscheduler.executors.pool import ThreadPoolExecutor
@@ -36,9 +36,67 @@ def get_scheduler() -> BackgroundScheduler:
             'medium': ThreadPoolExecutor(5),
             'low': ThreadPoolExecutor(2),
         }
+        # In-memory jobstore avoids SQLite lock contention and pickling issues
         _scheduler = BackgroundScheduler(executors=executors, timezone='Africa/Lagos')
-        _scheduler.add_jobstore(DjangoJobStore(), 'default')
     return _scheduler
+
+
+# ── Job Wrapper Functions ───────────────────────────────────────────────────────
+def _run_high_priority_portals():
+    try:
+        from apps.monitor.tasks import check_high_priority_portals
+        func = getattr(check_high_priority_portals, '__wrapped__', check_high_priority_portals)
+        func()
+    except Exception as exc:
+        logger.error("Scheduler error in check_high_priority_portals: %s", exc)
+
+def _run_standard_portals():
+    try:
+        from apps.monitor.tasks import check_standard_portals
+        func = getattr(check_standard_portals, '__wrapped__', check_standard_portals)
+        func()
+    except Exception as exc:
+        logger.error("Scheduler error in check_standard_portals: %s", exc)
+
+def _run_low_activity_portals():
+    try:
+        from apps.monitor.tasks import check_low_activity_portals
+        func = getattr(check_low_activity_portals, '__wrapped__', check_low_activity_portals)
+        func()
+    except Exception as exc:
+        logger.error("Scheduler error in check_low_activity_portals: %s", exc)
+
+def _run_retry_notifications():
+    try:
+        from apps.notifications.tasks import retry_failed_notifications
+        func = getattr(retry_failed_notifications, '__wrapped__', retry_failed_notifications)
+        func()
+    except Exception as exc:
+        logger.error("Scheduler error in retry_failed_notifications: %s", exc)
+
+def _run_nightly_backup():
+    try:
+        from apps.monitor.tasks import nightly_backup
+        func = getattr(nightly_backup, '__wrapped__', nightly_backup)
+        func()
+    except Exception as exc:
+        logger.error("Scheduler error in nightly_backup: %s", exc)
+
+def _run_daily_health_report():
+    try:
+        from apps.monitor.tasks import daily_health_report
+        func = getattr(daily_health_report, '__wrapped__', daily_health_report)
+        func()
+    except Exception as exc:
+        logger.error("Scheduler error in daily_health_report: %s", exc)
+
+def _run_cleanup_inactive_users():
+    try:
+        from apps.accounts.tasks import cleanup_inactive_users
+        func = getattr(cleanup_inactive_users, '__wrapped__', cleanup_inactive_users)
+        func()
+    except Exception as exc:
+        logger.error("Scheduler error in cleanup_inactive_users: %s", exc)
 
 
 def start():
@@ -57,7 +115,7 @@ def start():
     # ── Portal monitoring jobs (HIGH priority) ──────────────────────────────────
     # High-priority agencies: every 10 minutes
     scheduler.add_job(
-        'apps.monitor.tasks:check_high_priority_portals',
+        _run_high_priority_portals,
         trigger=IntervalTrigger(minutes=settings.PORTAL_CHECK_INTERVAL_HIGH_PRIORITY),
         id='check_high_priority_portals',
         replace_existing=True,
@@ -67,7 +125,7 @@ def start():
 
     # Standard portals: every 15 minutes
     scheduler.add_job(
-        'apps.monitor.tasks:check_standard_portals',
+        _run_standard_portals,
         trigger=IntervalTrigger(minutes=settings.PORTAL_CHECK_INTERVAL_MINUTES),
         id='check_standard_portals',
         replace_existing=True,
@@ -75,10 +133,9 @@ def start():
         executor='high',
     )
 
-    # Low-activity portals: every 60 minutes — runs on 'low' executor to avoid
-    # competing with high-priority monitoring threads for SQLite write locks.
+    # Low-activity portals: every 60 minutes
     scheduler.add_job(
-        'apps.monitor.tasks:check_low_activity_portals',
+        _run_low_activity_portals,
         trigger=IntervalTrigger(minutes=settings.PORTAL_CHECK_INTERVAL_LOW_ACTIVITY),
         id='check_low_activity_portals',
         replace_existing=True,
@@ -87,9 +144,8 @@ def start():
     )
 
     # ── Verification and Retries (MEDIUM priority) ──────────────────────────────
-    # Retry failed notifications every hour
     scheduler.add_job(
-        'apps.notifications.tasks:retry_failed_notifications',
+        _run_retry_notifications,
         trigger=IntervalTrigger(hours=1),
         id='retry_failed_notifications',
         replace_existing=True,
@@ -97,9 +153,8 @@ def start():
     )
 
     # ── Cleanup and Maintenance (LOW priority) ──────────────────────────────────
-    # Nightly DB backup to Telegram at 1 AM
     scheduler.add_job(
-        'apps.monitor.tasks:nightly_backup',
+        _run_nightly_backup,
         trigger='cron',
         hour=1, minute=0,
         id='nightly_backup',
@@ -108,9 +163,8 @@ def start():
         executor='low',
     )
 
-    # Daily health report at 8 AM
     scheduler.add_job(
-        'apps.monitor.tasks:daily_health_report',
+        _run_daily_health_report,
         trigger='cron',
         hour=8, minute=0,
         id='daily_health_report',
@@ -119,9 +173,8 @@ def start():
         executor='low',
     )
 
-    # Mark inactive users every 24 hours
     scheduler.add_job(
-        'apps.accounts.tasks:cleanup_inactive_users',
+        _run_cleanup_inactive_users,
         trigger=IntervalTrigger(hours=24),
         id='cleanup_inactive_users',
         replace_existing=True,
@@ -129,7 +182,7 @@ def start():
     )
 
     scheduler.start()
-    logger.info("✅ APScheduler started with %d jobs.", len(scheduler.get_jobs()))
+    logger.info("✅ APScheduler started in-memory with %d jobs.", len(scheduler.get_jobs()))
 
     # Trigger only the high-priority job immediately on startup.
     # Standard (MEDIUM) portals run 42 portals serially — triggering that
