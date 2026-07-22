@@ -493,20 +493,25 @@ class SystemStatusView(APIView):
 
 class LiveFeedView(APIView):
     """
-    GET /api/v1/status/live-feed/
-    Returns the 10 most recent monitoring events with human-readable time_ago.
+    Public live feed endpoint.
+    Returns real recruitment activity, verified openings, and portal incidents.
+    Filters out routine 'no_changes' scan logs to keep the public feed clean and relevant.
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
         from apps.monitor.models import Snapshot
-
-        snapshots = Snapshot.objects.select_related(
-            'portal__agency'
-        ).order_by('-created_at')[:10]
+        from apps.alerts.models import Alert
+        from django.db.models import Q
 
         feed = []
-        for snap in snapshots:
+
+        # 1. Fetch recent snapshots with actual events or incidents
+        event_snapshots = Snapshot.objects.select_related('portal__agency').filter(
+            Q(has_change=True) | Q(triggered_alert=True) | Q(status_code__gte=400)
+        ).order_by('-created_at')[:10]
+
+        for snap in event_snapshots:
             agency = snap.portal.agency if snap.portal else None
             if not agency:
                 continue
