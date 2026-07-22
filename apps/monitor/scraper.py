@@ -72,28 +72,33 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
             raise ScraperException(f"Failed to scrape {url}: {str(e)}")
 
     elif method == 'PLAYWRIGHT':
+        # Try fast curl_cffi HTTP impersonation first (bypasses Cloudflare & JS checks in ~500ms without spawning heavy Chromium)
+        try:
+            response = _http_get_with_impersonation(url, headers=headers, timeout=20)
+            if response.status_code == 200 and response.text and len(response.text) > 200:
+                scrape_portal.last_content_type = response.headers.get('Content-Type', '')
+                response_time_ms = int((time.time() - start_time) * 1000)
+                content = response.text.replace('\x00', '')
+                return content, 200, response_time_ms
+        except Exception as http_err:
+            logger.debug(f"HTTP impersonation before Playwright failed for {url}: {http_err}")
+
+        # Fall back to Playwright headless browser if HTTP impersonation returned non-200
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                page.goto(url, timeout=30000)
-                page.wait_for_timeout(2000)
+                page.goto(url, timeout=20000)
+                page.wait_for_timeout(1000)
                 content = page.content()
                 scrape_portal.last_content_type = 'text/html'
                 response_time_ms = int((time.time() - start_time) * 1000)
                 browser.close()
                 return content.replace('\x00', '') if content else '', 200, response_time_ms
         except Exception as e:
-            logger.warning(f"Playwright scrape failed/unavailable for {url}: {e}. Falling back to HTTP.")
-            try:
-                response = _http_get_with_impersonation(url, headers=headers, timeout=30)
-                scrape_portal.last_content_type = response.headers.get('Content-Type', '')
-                response_time_ms = int((time.time() - start_time) * 1000)
-                content = response.text.replace('\x00', '') if response.text else ''
-                return content, response.status_code, response_time_ms
-            except Exception as req_err:
-                raise ScraperException(f"Playwright failed and fallback HTTP failed: {str(req_err)}")
+            logger.warning(f"Playwright scrape failed/unavailable for {url}: {e}.")
+            raise ScraperException(f"Playwright failed for {url}: {str(e)}")
 
     elif method == 'PDF':
         try:
