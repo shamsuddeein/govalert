@@ -200,9 +200,17 @@ def test_management_commands_audit_and_reconcile():
     from django.core.management import call_command
     from apps.agencies.models import Agency, Portal
 
-    Agency.objects.create(name="Army", acronym="Army", category="SECURITY", official_domains=["army.mil.ng"], is_active=True)
+    agency = Agency.objects.create(name="Army", acronym="Army", category="SECURITY", official_domains=["army.mil.ng"], is_active=True)
+    # Create duplicate portals to simulate duplicate database records
+    Portal.objects.create(agency=agency, name="Army 1", url="https://nda.edu.ng")
+    Portal.objects.create(agency=agency, name="Army 2", url="https://nda.edu.ng")
+
     call_command('audit_agency_data')
     call_command('reconcile_agency_data')
+    call_command('load_ng_portals')
+
+    # Verify duplicate portal was safely cleaned up
+    assert Portal.objects.filter(url="https://nda.edu.ng").count() == 1
 
 
 @pytest.mark.django_db

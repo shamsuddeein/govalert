@@ -285,20 +285,31 @@ class Command(BaseCommand):
                 if updated_fields:
                     agency.save(update_fields=updated_fields)
 
-            # Create or update portal
-            portal, portal_created = Portal.objects.get_or_create(
-                agency=agency,
-                url=portal_url,
-                defaults={
-                    'name': agency_name,
-                    'priority': priority,
-                    'scrape_method': scrape_method,
-                    'tags': tags,
-                    'country': country,
-                    'poll_interval': poll_interval,
-                    'is_active': True,
-                }
-            )
+            # Create or update portal safely without crashing on existing duplicates
+            existing_portals = list(Portal.objects.filter(agency=agency, url=portal_url))
+            if not existing_portals:
+                existing_portals = list(Portal.objects.filter(url=portal_url))
+
+            if existing_portals:
+                portal = existing_portals[0]
+                portal_created = False
+                # If there are duplicate portal records for this URL, clean up extra rows
+                if len(existing_portals) > 1:
+                    for dup in existing_portals[1:]:
+                        dup.delete()
+            else:
+                portal = Portal.objects.create(
+                    agency=agency,
+                    url=portal_url,
+                    name=agency_name,
+                    priority=priority,
+                    scrape_method=scrape_method,
+                    tags=tags,
+                    country=country,
+                    poll_interval=poll_interval,
+                    is_active=True,
+                )
+                portal_created = True
 
             if portal_created:
                 created_count += 1
