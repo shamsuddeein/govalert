@@ -286,17 +286,32 @@ class Command(BaseCommand):
                     agency.save(update_fields=updated_fields)
 
             # Create or update portal safely without crashing on existing duplicates
+            # First try exact URL match
             existing_portals = list(Portal.objects.filter(agency=agency, url=portal_url))
             if not existing_portals:
                 existing_portals = list(Portal.objects.filter(url=portal_url))
 
+            if not existing_portals:
+                # URL may have changed — look up by agency and update the stale URL
+                existing_portals = list(Portal.objects.filter(agency=agency))
+
             if existing_portals:
                 portal = existing_portals[0]
                 portal_created = False
-                # If there are duplicate portal records for this URL, clean up extra rows
+                # If there are duplicate portal records for this agency, clean up extra rows
                 if len(existing_portals) > 1:
                     for dup in existing_portals[1:]:
                         dup.delete()
+                # Update the URL if it has changed (e.g. INEC portal URL migration)
+                if portal.url != portal_url:
+                    if not dry_run:
+                        portal.url = portal_url
+                        portal.save(update_fields=['url'])
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"URL updated: {agency_acronym:8} | {portal.url} → {portal_url}"
+                        )
+                    )
             else:
                 portal = Portal.objects.create(
                     agency=agency,
