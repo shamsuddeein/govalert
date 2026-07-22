@@ -65,7 +65,8 @@ class AgencyListSerializer(serializers.ModelSerializer):
         return Alert.objects.filter(
             agency=obj,
             status=AlertStatus.APPROVED,
-        ).count()
+        ).exclude(status=AlertStatus.SUPERSEDED).count()
+
 
     def get_description(self, obj):
         desc = obj.description or ''

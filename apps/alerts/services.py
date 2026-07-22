@@ -13,6 +13,29 @@ from core.utils import compute_content_hash
 logger = logging.getLogger(__name__)
 
 
+def supersede_older_alerts(alert: Alert) -> int:
+    """
+    Mark all older approved alerts sharing the same fingerprint (or agency & title)
+    as SUPERSEDED so that only the latest active update is displayed to users.
+    """
+    if not alert:
+        return 0
+
+    qs = Alert.objects.exclude(id=alert.id).filter(status=AlertStatus.APPROVED)
+    
+    if alert.recruitment_event and alert.recruitment_event.fingerprint:
+        qs = qs.filter(recruitment_event__fingerprint=alert.recruitment_event.fingerprint)
+    elif alert.agency and alert.title:
+        qs = qs.filter(agency=alert.agency, title=alert.title)
+    else:
+        return 0
+
+    updated_count = qs.update(status=AlertStatus.SUPERSEDED)
+    if updated_count > 0:
+        logger.info(f"Marked {updated_count} older alert(s) as SUPERSEDED for alert {alert.id}.")
+    return updated_count
+
+
 def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     """
     Analyze scraped content, calculate trust, run AI checks, and create alert.
@@ -241,7 +264,10 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
 
     # Approval is intentionally a separate human action. The admin approval
     # endpoint dispatches both new openings and update events.
-    if alert.status == AlertStatus.APPROVED and alert_created:
-        dispatch_alert.delay(alert.id)
+    if alert.status == AlertStatus.APPROVED:
+        supersede_older_alerts(alert)
+        if alert_created:
+            dispatch_alert.delay(alert.id)
 
     return alert
+

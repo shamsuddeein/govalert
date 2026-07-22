@@ -207,13 +207,32 @@ class JobListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        from apps.alerts.models import Alert, AlertStatus
+        from django.db.models import Max
 
         qs = Alert.objects.filter(
             status=AlertStatus.APPROVED
-        ).select_related('agency', 'portal').order_by('-created_at')
+        ).exclude(
+            status=AlertStatus.SUPERSEDED
+        )
+
+        # ── Deduplication: Return only the latest Alert per recruitment fingerprint / title ──
+        latest_event_ids = (
+            qs.filter(recruitment_event__fingerprint__isnull=False)
+            .values('recruitment_event__fingerprint')
+            .annotate(max_id=Max('id'))
+            .values_list('max_id', flat=True)
+        )
+        latest_title_ids = (
+            qs.filter(recruitment_event__fingerprint__isnull=True)
+            .values('agency_id', 'title')
+            .annotate(max_id=Max('id'))
+            .values_list('max_id', flat=True)
+        )
+        latest_ids = set(latest_event_ids).union(set(latest_title_ids))
+        qs = qs.filter(id__in=latest_ids).select_related('agency', 'portal').order_by('-created_at')
 
         # ── Filters ────────────────────────────────────────────────────────────
+
         agency_param = request.query_params.get('agency')
         if agency_param:
             qs = qs.filter(agency__acronym__iexact=agency_param)
@@ -1059,8 +1078,12 @@ class CustomAdminAlertApproveView(APIView):
 
         alert.save(update_fields=['status', 'is_verified', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
 
+        from apps.alerts.services import supersede_older_alerts
+        supersede_older_alerts(alert)
+
         # Trigger downstream publishing
         from apps.notifications.tasks import dispatch_alert
+
         try:
             dispatch_alert.delay(alert.id)
         except Exception:

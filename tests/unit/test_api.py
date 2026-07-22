@@ -337,6 +337,74 @@ def test_admin_portal_trigger_check_error_handling(mocker):
     assert "could not be parsed" in response.data['detail']
 
 
+@pytest.mark.django_db
+def test_job_list_deduplication_by_fingerprint_and_title():
+    """
+    REGRESSION TEST: Ensure JobListView deduplicates alerts sharing the same agency and title
+    or fingerprint, returning only the single latest Alert.
+    """
+    client = APIClient()
+    agency = Agency.objects.create(
+        name="Nigerian Maritime Administration and Safety Agency",
+        acronym="NIMASA",
+        official_domains=["nimasa.gov.ng"],
+        is_active=True
+    )
+    # Older alert
+    alert1 = Alert.objects.create(
+        agency=agency,
+        title="NIMASA Recruitment Update Detected",
+        status=AlertStatus.APPROVED,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+    # Newer alert for same recruitment
+    alert2 = Alert.objects.create(
+        agency=agency,
+        title="NIMASA Recruitment Update Detected",
+        status=AlertStatus.APPROVED,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+
+    url = reverse('api:job_list')
+    response = client.get(url)
+    assert response.status_code == 200
+    results = response.data.get('results', response.data)
+    assert len(results) == 1
+    assert results[0]['ref'] == f"{alert2.pk:04d}-GA"
+
+
+@pytest.mark.django_db
+def test_supersede_older_alerts_on_update():
+    """
+    Ensure calling supersede_older_alerts updates older APPROVED alerts for the same fingerprint/title to SUPERSEDED.
+    """
+    from apps.alerts.services import supersede_older_alerts
+    agency = Agency.objects.create(
+        name="Federal Ministry of Interior",
+        acronym="FMI",
+        official_domains=["interior.gov.ng"],
+        is_active=True
+    )
+    old_alert = Alert.objects.create(
+        agency=agency,
+        title="FMI Recruitment Update Detected",
+        status=AlertStatus.APPROVED,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+    new_alert = Alert.objects.create(
+        agency=agency,
+        title="FMI Recruitment Update Detected",
+        status=AlertStatus.APPROVED,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+
+    count = supersede_older_alerts(new_alert)
+    assert count == 1
+    old_alert.refresh_from_db()
+    assert old_alert.status == AlertStatus.SUPERSEDED
+
+
+
 
 
 

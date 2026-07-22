@@ -23,6 +23,7 @@ class AlertStatus(models.TextChoices):
     APPROVED = 'APPROVED', 'Approved — Sent to Users'
     REJECTED = 'REJECTED', 'Rejected — Marked Fake'
     HELD = 'HELD', 'Held for Admin Review'
+    SUPERSEDED = 'SUPERSEDED', 'Superseded by Update'
 
 
 class EventStatus(models.TextChoices):
