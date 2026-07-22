@@ -1233,11 +1233,19 @@ class CustomAdminAlertHoldView(APIView):
 
 class CustomAdminAlertUpdateView(APIView):
     """
-    PATCH /api/v1/admin/alerts/{id}/
-    Body: {"admin_notes": str (optional), "trust_score": int (optional, 0-100)}
-    Allows editing notes and manually overriding trust_score with audit trail.
+    GET    /api/v1/admin/alerts/{id}/ — fetch detail of a specific alert
+    PATCH  /api/v1/admin/alerts/{id}/ — edit alert post fields (title, positions, deadline, requirements, source_url, status, trust_score, admin_notes)
+    DELETE /api/v1/admin/alerts/{id}/ — delete alert post
     """
     permission_classes = [IsStaffUser]
+
+    def get(self, request, pk):
+        try:
+            alert = Alert.objects.select_related('agency', 'portal', 'recruitment_event').get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Alert not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        serializer = AdminAlertDetailSerializer(alert)
+        return Response(serializer.data)
 
     def patch(self, request, pk):
         try:
@@ -1247,10 +1255,27 @@ class CustomAdminAlertUpdateView(APIView):
 
         update_fields = ['updated_at']
 
-        if 'admin_notes' in request.data:
-            new_notes = str(request.data['admin_notes']).strip()
-            alert.admin_notes = new_notes
-            update_fields.append('admin_notes')
+        text_fields = ['title', 'positions', 'deadline', 'requirements', 'source_url', 'admin_notes']
+        for field in text_fields:
+            if field in request.data:
+                setattr(alert, field, str(request.data[field]).strip())
+                update_fields.append(field)
+
+        if 'status' in request.data:
+            new_status = str(request.data['status']).strip().upper()
+            if new_status in AlertStatus.values:
+                alert.status = new_status
+                update_fields.append('status')
+                if new_status == AlertStatus.APPROVED:
+                    alert.is_verified = True
+                    alert.verified_by = request.user
+                    alert.verified_at = timezone.now()
+                    update_fields.extend(['is_verified', 'verified_by', 'verified_at'])
+            else:
+                return Response(
+                    {'detail': f"Invalid status '{new_status}'. Allowed: {', '.join(AlertStatus.values)}"},
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
 
         if 'trust_score' in request.data:
             try:
@@ -1273,8 +1298,27 @@ class CustomAdminAlertUpdateView(APIView):
                 update_fields.extend(['trust_score', 'trust_score_overridden_by', 'trust_score_overridden_at'])
 
         alert.save(update_fields=list(set(update_fields)))
+
+        if alert.status == AlertStatus.APPROVED:
+            from apps.alerts.services import supersede_older_alerts
+            supersede_older_alerts(alert)
+
         serializer = AdminAlertDetailSerializer(alert)
         return Response(serializer.data)
+
+    def delete(self, request, pk):
+        try:
+            alert = Alert.objects.get(pk=pk)
+        except Alert.DoesNotExist:
+            return Response({'detail': 'Alert not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        alert_id = alert.id
+        alert.delete()
+        return Response(
+            {'detail': 'Alert deleted successfully.', 'id': alert_id},
+            status=http_status.HTTP_200_OK
+        )
+
 
 
 class CustomAdminAlertStatsView(APIView):

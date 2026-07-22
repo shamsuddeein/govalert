@@ -404,6 +404,68 @@ def test_supersede_older_alerts_on_update():
     assert old_alert.status == AlertStatus.SUPERSEDED
 
 
+@pytest.mark.django_db
+def test_admin_alert_get_edit_and_delete():
+    """
+    Test GET, PATCH, and DELETE on /api/v1/admin/alerts/{pk}/ by a staff user.
+    """
+    from django.contrib.auth.models import User
+
+    staff_user = User.objects.create_user(
+        username="admin_editor",
+        email="editor@example.com",
+        password="Password123!",
+        is_staff=True
+    )
+    agency = Agency.objects.create(
+        name="Test Agency",
+        acronym="TAG",
+        official_domains=["tag.gov.ng"],
+        is_active=True
+    )
+    alert = Alert.objects.create(
+        agency=agency,
+        title="Initial Title",
+        positions="Position A",
+        deadline="2026-12-31",
+        status=AlertStatus.PENDING,
+        event_type=EventType.RECRUITMENT_OPEN
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=staff_user)
+
+    url = reverse('api:admin_alert_update', kwargs={'pk': alert.id})
+
+    # 1. GET alert detail
+    get_res = client.get(url)
+    assert get_res.status_code == 200
+    assert get_res.data['title'] == "Initial Title"
+
+    # 2. PATCH edit post fields
+    patch_res = client.patch(url, {
+        "title": "Updated Title",
+        "positions": "Position A, Position B",
+        "deadline": "2026-11-30",
+        "status": "APPROVED"
+    }, format='json')
+    assert patch_res.status_code == 200
+    assert patch_res.data['title'] == "Updated Title"
+    assert patch_res.data['positions'] == "Position A, Position B"
+    assert patch_res.data['status'] == AlertStatus.APPROVED
+
+    alert.refresh_from_db()
+    assert alert.title == "Updated Title"
+    assert alert.status == AlertStatus.APPROVED
+
+    # 3. DELETE alert post
+    del_res = client.delete(url)
+    assert del_res.status_code == 200
+    assert del_res.data['detail'] == "Alert deleted successfully."
+    assert not Alert.objects.filter(pk=alert.id).exists()
+
+
+
 
 
 
