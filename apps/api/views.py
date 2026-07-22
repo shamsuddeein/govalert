@@ -1743,5 +1743,252 @@ class CustomAdminSystemHealthView(APIView):
         })
 
 
+# ─── Custom Admin User Management & Mass Recheck Endpoints ────────────────────
+
+class CustomAdminUserListView(APIView):
+    """
+    GET /api/v1/admin/users/
+    Returns paginated/searchable roster of registered Web users, Telegram bot subscribers, and Keyword subscribers.
+    Query params:
+      ?search={email|username|telegram_id|name}
+      ?user_type={web|telegram|keyword}
+      ?status={active|inactive|blocked}
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        from apps.accounts.models import WebUser, TelegramUser, UserState
+        from apps.subscriptions.models import KeywordSubscription
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        search = (request.query_params.get('search') or '').strip().lower()
+        user_type = (request.query_params.get('user_type') or '').strip().lower()
+        status_filter = (request.query_params.get('status') or '').strip().lower()
+
+        results = []
+
+        # 1. Web Users
+        if not user_type or user_type == 'web':
+            web_qs = WebUser.objects.select_related('user').all().order_by('-user__date_joined')
+            for w in web_qs:
+                u = w.user
+                if not u:
+                    continue
+                is_act = u.is_active
+                if status_filter == 'active' and not is_act:
+                    continue
+                if status_filter in ['inactive', 'blocked'] and is_act:
+                    continue
+
+                full_name = f"{u.first_name} {u.last_name}".strip() or u.username
+                search_haystack = f"{u.email} {u.username} {full_name}".lower()
+
+                if search and search not in search_haystack:
+                    continue
+
+                results.append({
+                    'id': f"web-{w.id}",
+                    'raw_id': w.id,
+                    'user_type': 'WEB',
+                    'email': u.email or u.username,
+                    'display_name': full_name,
+                    'telegram_id': None,
+                    'is_active': u.is_active,
+                    'email_alerts_enabled': getattr(w, 'email_alerts_enabled', True),
+                    'date_joined': u.date_joined.isoformat() if u.date_joined else None,
+                    'last_login': u.last_login.isoformat() if u.last_login else None,
+                })
+
+        # 2. Telegram Users
+        if not user_type or user_type == 'telegram':
+            tg_qs = TelegramUser.objects.all().order_by('-joined_at')
+            for tg in tg_qs:
+                is_act = (tg.state == UserState.ACTIVE)
+                if status_filter == 'active' and not is_act:
+                    continue
+                if status_filter in ['inactive', 'blocked'] and is_act:
+                    continue
+
+                full_name = f"{tg.first_name or ''} {tg.last_name or ''}".strip() or f"User {tg.telegram_id}"
+                search_haystack = f"{tg.telegram_id} {tg.username or ''} {full_name}".lower()
+
+                if search and search not in search_haystack:
+                    continue
+
+                results.append({
+                    'id': f"tg-{tg.telegram_id}",
+                    'raw_id': tg.telegram_id,
+                    'user_type': 'TELEGRAM',
+                    'email': None,
+                    'display_name': full_name,
+                    'username': tg.username,
+                    'telegram_id': tg.telegram_id,
+                    'is_active': is_act,
+                    'state': tg.state,
+                    'date_joined': tg.joined_at.isoformat() if hasattr(tg, 'joined_at') and tg.joined_at else None,
+                    'last_login': tg.last_active_at.isoformat() if hasattr(tg, 'last_active_at') and tg.last_active_at else None,
+                })
+
+        # 3. Keyword Subscriptions
+        if not user_type or user_type == 'keyword':
+            kw_qs = KeywordSubscription.objects.all().order_by('-created_at')
+            for kw in kw_qs:
+                is_act = kw.is_active
+                if status_filter == 'active' and not is_act:
+                    continue
+                if status_filter in ['inactive', 'blocked'] and is_act:
+                    continue
+
+                search_haystack = f"{kw.email} {kw.query_text}".lower()
+                if search and search not in search_haystack:
+                    continue
+
+                results.append({
+                    'id': f"kw-{kw.id}",
+                    'raw_id': kw.id,
+                    'user_type': 'KEYWORD_SUBSCRIBER',
+                    'email': kw.email,
+                    'query_text': kw.query_text,
+                    'display_name': kw.email,
+                    'telegram_id': None,
+                    'is_active': kw.is_active,
+                    'date_joined': kw.created_at.isoformat() if hasattr(kw, 'created_at') and kw.created_at else None,
+                    'last_login': None,
+                })
+
+        # Sort by date_joined descending
+        results.sort(key=lambda item: item['date_joined'] or '', reverse=True)
+
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(results, request)
+        return paginator.get_paginated_response(page)
+
+
+class CustomAdminUserStatsView(APIView):
+    """
+    GET /api/v1/admin/users/stats/
+    Returns user aggregate metrics: total_web_users, total_telegram_subscribers,
+    total_keyword_subscribers, active_web_users, new_web_users_today.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        from apps.accounts.models import WebUser, TelegramUser, UserState
+        from apps.subscriptions.models import KeywordSubscription
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        today = timezone.now().date()
+
+        total_web_users = User.objects.count()
+        active_web_users = User.objects.filter(is_active=True).count()
+        new_web_users_today = User.objects.filter(date_joined__date=today).count()
+
+        total_telegram_subscribers = TelegramUser.objects.count()
+        active_telegram_subscribers = TelegramUser.objects.filter(state=UserState.ACTIVE).count()
+
+        total_keyword_subscribers = KeywordSubscription.objects.values('email').distinct().count()
+        active_keyword_subscriptions = KeywordSubscription.objects.filter(is_active=True).count()
+
+        return Response({
+            'total_web_users': total_web_users,
+            'active_web_users': active_web_users,
+            'new_web_users_today': new_web_users_today,
+            'total_telegram_subscribers': total_telegram_subscribers,
+            'active_telegram_subscribers': active_telegram_subscribers,
+            'total_keyword_subscribers': total_keyword_subscribers,
+            'active_keyword_subscriptions': active_keyword_subscriptions,
+        })
+
+
+class CustomAdminUserToggleActiveView(APIView):
+    """
+    PATCH /api/v1/admin/users/{user_type}/{pk}/toggle-active/
+    Toggles is_active / state for a WebUser, TelegramUser, or KeywordSubscription.
+    """
+    permission_classes = [IsStaffUser]
+
+    def patch(self, request, user_type, pk):
+        from apps.accounts.models import WebUser, TelegramUser, UserState
+        from apps.subscriptions.models import KeywordSubscription
+
+        utype = user_type.lower()
+        if utype == 'web':
+            try:
+                web_user = WebUser.objects.select_related('user').get(pk=pk)
+                u = web_user.user
+                u.is_active = not u.is_active
+                u.save(update_fields=['is_active'])
+                return Response({'status': 'updated', 'user_type': 'web', 'id': pk, 'is_active': u.is_active})
+            except WebUser.DoesNotExist:
+                return Response({'detail': 'WebUser not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        elif utype == 'telegram':
+            try:
+                tg_user = TelegramUser.objects.get(pk=pk)
+                if tg_user.state == UserState.ACTIVE:
+                    tg_user.state = UserState.BLOCKED
+                else:
+                    tg_user.state = UserState.ACTIVE
+                tg_user.save(update_fields=['state'])
+                return Response({
+                    'status': 'updated',
+                    'user_type': 'telegram',
+                    'id': pk,
+                    'is_active': tg_user.state == UserState.ACTIVE,
+                    'state': tg_user.state
+                })
+            except TelegramUser.DoesNotExist:
+                return Response({'detail': 'TelegramUser not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        elif utype == 'keyword':
+            try:
+                kw = KeywordSubscription.objects.get(pk=pk)
+                kw.is_active = not kw.is_active
+                kw.save(update_fields=['is_active'])
+                return Response({'status': 'updated', 'user_type': 'keyword', 'id': pk, 'is_active': kw.is_active})
+            except KeywordSubscription.DoesNotExist:
+                return Response({'detail': 'KeywordSubscription not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        return Response({'detail': 'Invalid user_type.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+
+class CustomAdminPortalTriggerCheckAllView(APIView):
+    """
+    POST /api/v1/admin/portals/trigger-check-all/
+    Manually trigger an immediate check across all active portals.
+    Queues background tasks (or executes inline) for each portal.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        from apps.agencies.models import Portal
+        from apps.monitor.tasks import portal_check
+
+        active_portals = Portal.objects.filter(is_active=True)
+        count = active_portals.count()
+        triggered_ids = []
+
+        for p in active_portals:
+            try:
+                if getattr(settings, 'USE_CELERY', False) and hasattr(portal_check, 'delay'):
+                    portal_check.delay(p.id)
+                else:
+                    portal_check(p.id)
+                triggered_ids.append(p.id)
+            except Exception as exc:
+                logger.error(f"Error triggering check for portal {p.id} ({p.name}): {exc}")
+
+        return Response({
+            'detail': f"Triggered recheck for {len(triggered_ids)} out of {count} active portals.",
+            'total_active_portals': count,
+            'triggered_count': len(triggered_ids),
+            'triggered_portal_ids': triggered_ids,
+            'timestamp': timezone.now().isoformat(),
+        })
+
+
+
 
 

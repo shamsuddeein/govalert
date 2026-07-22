@@ -88,9 +88,15 @@ admin_patterns = [
 
     # Portal Management
     path('portals/', views.CustomAdminPortalListCreateView.as_view(), name='admin_portal_list_create'),
+    path('portals/trigger-check-all/', views.CustomAdminPortalTriggerCheckAllView.as_view(), name='admin_portal_trigger_check_all'),
     path('portals/<int:pk>/', views.CustomAdminPortalDetailView.as_view(), name='admin_portal_detail'),
     path('portals/<int:pk>/trigger-check/', views.CustomAdminPortalTriggerCheckView.as_view(), name='admin_portal_trigger_check'),
     path('portals/<int:pk>/history/', views.CustomAdminPortalHistoryView.as_view(), name='admin_portal_history'),
+
+    # User Management
+    path('users/', views.CustomAdminUserListView.as_view(), name='admin_user_list'),
+    path('users/stats/', views.CustomAdminUserStatsView.as_view(), name='admin_user_stats'),
+    path('users/<str:user_type>/<int:pk>/toggle-active/', views.CustomAdminUserToggleActiveView.as_view(), name='admin_user_toggle_active'),
 
     # System Health & Broadcast
     path('system-health/', views.CustomAdminSystemHealthView.as_view(), name='admin_system_health'),
