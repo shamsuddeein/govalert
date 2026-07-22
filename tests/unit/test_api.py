@@ -252,5 +252,83 @@ def test_keyword_subscription_matching():
     assert sub.last_matched_at is not None
 
 
+@pytest.mark.django_db
+def test_admin_agency_search_api():
+    """
+    REGRESSION TEST for BUG 1: Agency search 500s due to NameError 'models' not defined.
+    Verifies /api/v1/admin/agencies/?search=army returns 200 with filtered results.
+    """
+    from django.contrib.auth.models import User
+    from apps.agencies.models import Agency
+
+    staff_user = User.objects.create_user(
+        username="admin_user",
+        email="admin@example.com",
+        password="Password123!",
+        is_staff=True
+    )
+    Agency.objects.create(name="Nigerian Army", acronym="NA", official_domains=["army.mil.ng"], is_active=True)
+    Agency.objects.create(name="Nigeria Police Force", acronym="NPF", official_domains=["police.gov.ng"], is_active=True)
+
+    client = APIClient()
+    client.force_authenticate(user=staff_user)
+
+    url = reverse('api:admin_agency_list_create') + '?search=army'
+    response = client.get(url)
+    assert response.status_code == 200
+    results = response.data
+    assert len(results) == 1
+    assert results[0]['acronym'] == 'NA'
+
+
+@pytest.mark.django_db
+def test_clean_html_to_text_nul_bytes_and_non_html():
+    """
+    REGRESSION TEST for BUG 2: clean_html_to_text handling of NUL bytes and non-HTML content.
+    """
+    from apps.monitor.parser import clean_html_to_text
+
+    # NUL bytes stripped
+    raw = "Hello\x00 World\x00 <script>alert(1)</script> <b>Test</b>"
+    cleaned = clean_html_to_text(raw, content_type="text/html")
+    assert "\x00" not in cleaned
+    assert "Hello World" in cleaned
+
+    # Non-HTML content type skipped
+    non_html = "Binary/PDF content \x00 data..."
+    cleaned_non_html = clean_html_to_text(non_html, content_type="application/pdf")
+    assert "\x00" not in cleaned_non_html
+    assert "Binary/PDF content" in cleaned_non_html
+
+
+@pytest.mark.django_db
+def test_admin_portal_trigger_check_error_handling(mocker):
+    """
+    REGRESSION TEST for BUG 2: Manual portal check returning non-500 response on parse/encoding error.
+    """
+    from django.contrib.auth.models import User
+    from apps.agencies.models import Agency, Portal
+
+    staff_user = User.objects.create_user(
+        username="admin_user_2",
+        email="admin2@example.com",
+        password="Password123!",
+        is_staff=True
+    )
+    agency = Agency.objects.create(name="INEC", acronym="INEC", official_domains=["inecnigeria.org"], is_active=True)
+    portal = Portal.objects.create(agency=agency, name="INEC Portal", url="https://recruitment.inecnigeria.org")
+
+    mocker.patch('apps.monitor.tasks.portal_check', side_effect=ValueError("A string literal cannot contain NUL (0x00) characters."))
+
+    client = APIClient()
+    client.force_authenticate(user=staff_user)
+
+    url = reverse('api:admin_portal_trigger_check', kwargs={'pk': portal.id})
+    response = client.post(url)
+    assert response.status_code == 422
+    assert "could not be parsed" in response.data['detail']
+
+
+
 
 

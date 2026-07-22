@@ -65,8 +65,10 @@ class RequestsScraper(BaseScraperBackend):
                 response = requests.get(
                     url, headers=headers, timeout=timeout, verify=False, allow_redirects=True
                 )
+                self.last_content_type = response.headers.get('Content-Type', '')
                 response_time = int((time.time() - start_time) * 1000)
-                return response.text, response.status_code, response_time
+                content = response.text.replace('\x00', '') if response.text else ''
+                return content, response.status_code, response_time
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 last_exc = e
                 if attempt == 0:
@@ -85,14 +87,18 @@ class PlaywrightScraper(BaseScraperBackend):
     def scrape(self, url: str) -> tuple[str, int, int]:
         from apps.monitor.scraper import scrape_portal
         # Fall back to existing scraping implementation
-        return scrape_portal(url, "PLAYWRIGHT")
+        content, code, duration = scrape_portal(url, "PLAYWRIGHT")
+        self.last_content_type = getattr(scrape_portal, 'last_content_type', 'text/html')
+        return content.replace('\x00', '') if content else '', code, duration
 
 
 class PDFScraper(BaseScraperBackend):
     def scrape(self, url: str) -> tuple[str, int, int]:
         from apps.monitor.scraper import scrape_portal
         # Fall back to existing scraping implementation
-        return scrape_portal(url, "PDF")
+        content, code, duration = scrape_portal(url, "PDF")
+        self.last_content_type = getattr(scrape_portal, 'last_content_type', 'application/pdf')
+        return content.replace('\x00', '') if content else '', code, duration
 
 
 # ─── Notification Backend Plugin System ────────────────────────────────────────

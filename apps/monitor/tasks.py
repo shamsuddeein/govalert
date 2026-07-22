@@ -47,10 +47,13 @@ def portal_check(portal_id: int):
     try:
         scraper = get_scraper_backend(portal.scrape_method)
         content, status_code, response_time_ms = scraper.scrape(portal.url)
+        content = content.replace('\x00', '') if content else ''
+        content_type = getattr(scraper, 'last_content_type', '')
         success = True
     except ScraperException as e:
         logger.warning(f"Scraper failed for {portal.url}: {e}")
         content = ""
+        content_type = ""
         status_code = 500
         response_time_ms = 0
         success = False
@@ -98,7 +101,7 @@ def portal_check(portal_id: int):
         portal.status = PortalStatus.ONLINE
         portal.health_status = HealthStatus.ONLINE
 
-    normalized_text = clean_html_to_text(content)
+    normalized_text = clean_html_to_text(content, content_type=content_type)
     content_hash = compute_content_hash(normalized_text)
 
     # Get previous snapshot
@@ -160,7 +163,7 @@ def portal_check(portal_id: int):
     Snapshot.objects.create(
         portal=portal,
         content_hash=content_hash,
-        raw_content=normalized_text,
+        raw_content=normalized_text.replace('\x00', '') if normalized_text else '',
         status_code=status_code,
         response_time_ms=response_time_ms,
         scrape_method_used=portal.scrape_method,

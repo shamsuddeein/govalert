@@ -1307,8 +1307,8 @@ class CustomAdminAgencyListCreateView(APIView):
         search_param = request.query_params.get('search', '').strip()
         if search_param:
             agencies = agencies.filter(
-                models.Q(name__icontains=search_param) |
-                models.Q(acronym__icontains=search_param)
+                Q(name__icontains=search_param) |
+                Q(acronym__icontains=search_param)
             )
 
         serializer = AdminAgencySerializer(agencies, many=True)
@@ -1384,15 +1384,15 @@ class CustomAdminPortalListCreateView(APIView):
                 portals = portals.filter(agency_id=int(agency_param))
             else:
                 portals = portals.filter(
-                    models.Q(agency__acronym__iexact=agency_param) |
-                    models.Q(agency__slug__iexact=agency_param)
+                    Q(agency__acronym__iexact=agency_param) |
+                    Q(agency__slug__iexact=agency_param)
                 )
 
         health_param = request.query_params.get('health_status', '').strip() or request.query_params.get('status', '').strip()
         if health_param:
             portals = portals.filter(
-                models.Q(health_status__iexact=health_param) |
-                models.Q(status__iexact=health_param)
+                Q(health_status__iexact=health_param) |
+                Q(status__iexact=health_param)
             )
 
         serializer = AdminPortalSerializer(portals, many=True)
@@ -1468,6 +1468,12 @@ class CustomAdminPortalTriggerCheckView(APIView):
             portal_check(portal.id)
         except Exception as exc:
             logger.error(f"Manual portal_check failed for portal #{pk}: {exc}")
+            exc_str = str(exc)
+            if "NUL" in exc_str or "0x00" in exc_str or "parse" in exc_str.lower() or "encoding" in exc_str.lower():
+                return Response(
+                    {'detail': 'This portal returned content that could not be parsed — may not be a standard HTML page.'},
+                    status=http_status.HTTP_422_UNPROCESSABLE_ENTITY
+                )
             return Response(
                 {'detail': f'Error executing portal scrape: {str(exc)}'},
                 status=http_status.HTTP_500_INTERNAL_SERVER_ERROR

@@ -1,7 +1,11 @@
 import re
 import difflib
-from bs4 import BeautifulSoup
+import logging
+import warnings
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 from core.utils import sanitise_html
+
+logger = logging.getLogger(__name__)
 
 # ─── Recruitment Keyword Dictionaries ─────────────────────────────────────────
 # NOTE: Do NOT hardcode specific years (e.g. "2024/2025 recruitment") — those
@@ -65,27 +69,47 @@ DEADLINE_PATTERNS = [
 ]
 
 
-def clean_html_to_text(html_content: str) -> str:
+def clean_html_to_text(html_content: str, content_type: str = '') -> str:
     """Normalize HTML by removing scripts, styles, navigation, footer, etc."""
-    soup = BeautifulSoup(html_content, 'html.parser')
+    if not html_content:
+        return ""
 
-    # Remove unwanted tag elements
-    for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'iframe']):
-        tag.decompose()
+    # Sanitize NUL bytes
+    html_content = html_content.replace('\x00', '')
 
-    # Locate main body content area
-    main = (
-        soup.find('main') or
-        soup.find('article') or
-        soup.find('div', id='content') or
-        soup.find('div', class_='content')
-    )
-    if main:
-        text = main.get_text(separator=' ')
-    else:
-        text = soup.get_text(separator=' ')
+    if not isinstance(content_type, str):
+        content_type = str(content_type)
 
-    return sanitise_html(text)
+    # Check Content-Type header if provided
+    if content_type and not any(ct in content_type.lower() for ct in ['text/html', 'application/xhtml+xml', 'text/plain']):
+        logger.warning(f"non-HTML content ({content_type}), skipping parse")
+        return sanitise_html(html_content[:5000])
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=MarkupResemblesLocatorWarning)
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+
+            # Remove unwanted tag elements
+            for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'noscript', 'iframe']):
+                tag.decompose()
+
+            # Locate main body content area
+            main = (
+                soup.find('main') or
+                soup.find('article') or
+                soup.find('div', id='content') or
+                soup.find('div', class_='content')
+            )
+            if main:
+                text = main.get_text(separator=' ')
+            else:
+                text = soup.get_text(separator=' ')
+
+            return sanitise_html(text.replace('\x00', ''))
+        except Exception as exc:
+            logger.warning(f"BeautifulSoup parsing failed ({exc}), skipping parse")
+            return sanitise_html(html_content[:5000].replace('\x00', ''))
 
 
 def analyze_diff(old_text: str, new_text: str) -> str:

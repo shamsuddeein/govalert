@@ -33,8 +33,10 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
     if method == 'HTTP':
         try:
             response = requests.get(url, headers=headers, timeout=30, verify=False)
+            scrape_portal.last_content_type = response.headers.get('Content-Type', '')
             response_time_ms = int((time.time() - start_time) * 1000)
-            return response.text, response.status_code, response_time_ms
+            content = response.text.replace('\x00', '') if response.text else ''
+            return content, response.status_code, response_time_ms
         except requests.RequestException as e:
             logger.warning(f"HTTP scrape failed for {url}: {e}")
             raise ScraperException(f"Failed to scrape {url}: {str(e)}")
@@ -48,15 +50,18 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
                 page.goto(url, timeout=30000)
                 page.wait_for_timeout(2000)
                 content = page.content()
+                scrape_portal.last_content_type = 'text/html'
                 response_time_ms = int((time.time() - start_time) * 1000)
                 browser.close()
-                return content, 200, response_time_ms
+                return content.replace('\x00', '') if content else '', 200, response_time_ms
         except Exception as e:
             logger.warning(f"Playwright scrape failed/unavailable for {url}: {e}. Falling back to HTTP.")
             try:
                 response = requests.get(url, headers=headers, timeout=30, verify=False)
+                scrape_portal.last_content_type = response.headers.get('Content-Type', '')
                 response_time_ms = int((time.time() - start_time) * 1000)
-                return response.text, response.status_code, response_time_ms
+                content = response.text.replace('\x00', '') if response.text else ''
+                return content, response.status_code, response_time_ms
             except requests.RequestException as req_err:
                 raise ScraperException(f"Playwright failed and fallback HTTP failed: {str(req_err)}")
 
@@ -65,6 +70,7 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
             import pdfplumber
             import io
             response = requests.get(url, headers=headers, timeout=30, verify=False)
+            scrape_portal.last_content_type = response.headers.get('Content-Type', 'application/pdf')
             if response.status_code != 200:
                 raise ScraperException(f"Failed to download PDF: HTTP {response.status_code}")
 
@@ -73,13 +79,15 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
                 content = '\n'.join(pages_text)
 
             response_time_ms = int((time.time() - start_time) * 1000)
-            return content, 200, response_time_ms
+            return content.replace('\x00', '') if content else '', 200, response_time_ms
         except Exception as e:
             logger.warning(f"PDF scrape failed/unavailable for {url}: {e}. Falling back to HTTP.")
             try:
                 response = requests.get(url, headers=headers, timeout=30, verify=False)
+                scrape_portal.last_content_type = response.headers.get('Content-Type', '')
                 response_time_ms = int((time.time() - start_time) * 1000)
-                return response.text, response.status_code, response_time_ms
+                content = response.text.replace('\x00', '') if response.text else ''
+                return content, response.status_code, response_time_ms
             except requests.RequestException as req_err:
                 raise ScraperException(f"PDF failed and fallback HTTP failed: {str(req_err)}")
 
