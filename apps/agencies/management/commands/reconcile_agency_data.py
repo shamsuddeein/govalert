@@ -71,7 +71,7 @@ CANONICAL_AGENCIES = {
     'FMF': {'category': 'FINANCE', 'domain': 'finance.gov.ng', 'name': 'Federal Ministry of Finance'},
     'FMI': {'category': 'SECURITY', 'domain': 'interior.gov.ng', 'name': 'Federal Ministry of Interior'},
     'FRSC': {'category': 'SECURITY', 'domain': 'frsc.gov.ng', 'name': 'Federal Road Safety Corps'},
-    'INEC': {'category': 'OTHER', 'domain': 'inecnigeria.org', 'name': 'Independent National Electoral Commission'},
+    'INEC': {'category': 'OTHER', 'domain': 'recruitment.inecnigeria.org', 'name': 'Independent National Electoral Commission'},
     'NDLEA': {'category': 'SECURITY', 'domain': 'ndlea.gov.ng', 'name': 'National Drug Law Enforcement Agency'},
     'PSC': {'category': 'SECURITY', 'domain': 'psc.gov.ng', 'name': 'Police Service Commission'},
     'TRCN': {'category': 'EDUCATION', 'domain': 'trcn.gov.ng', 'name': 'Teachers Registration Council of Nigeria'},

@@ -218,7 +218,7 @@
     {
         "name": "Independent National Electoral Commission",
         "acronym": "INEC",
-        "url": "https://inecnigeria.org",
+        "url": "https://recruitment.inecnigeria.org",
         "priority": "MEDIUM",
         "scrape_method": "REQUESTS",
         "tags": [

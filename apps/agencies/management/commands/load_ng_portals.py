@@ -121,7 +121,7 @@ def load_portal_data() -> list:
     {
         'name': 'Independent National Electoral Commission',
         'acronym': 'INEC',
-        'url': 'https://inecnigeria.org',
+        'url': 'https://recruitment.inecnigeria.org',
     },
     {
         'name': 'Nigerian National Petroleum Company',

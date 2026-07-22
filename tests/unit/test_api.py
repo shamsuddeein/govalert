@@ -315,7 +315,7 @@ def test_admin_portal_trigger_check_error_handling(mocker):
         password="Password123!",
         is_staff=True
     )
-    agency = Agency.objects.create(name="INEC", acronym="INEC", official_domains=["inecnigeria.org"], is_active=True)
+    agency = Agency.objects.create(name="INEC", acronym="INEC", official_domains=["recruitment.inecnigeria.org"], is_active=True)
     portal = Portal.objects.create(agency=agency, name="INEC Portal", url="https://recruitment.inecnigeria.org")
 
     mocker.patch('apps.monitor.tasks.portal_check', side_effect=ValueError("A string literal cannot contain NUL (0x00) characters."))
