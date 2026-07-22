@@ -27,7 +27,7 @@ def test_match_recruitment_keywords():
     assert "December 31, 2025" in res['deadline']
 
 
-@patch('apps.monitor.scraper.requests.get')
+@patch('apps.monitor.scraper._http_get_with_impersonation')
 def test_scrape_portal_http_success(mock_get):
     mock_resp = MagicMock()
     mock_resp.text = "Hello World"
@@ -43,14 +43,14 @@ def test_scrape_portal_http_success(mock_get):
 import requests
 
 
-@patch('apps.monitor.scraper.requests.get')
+@patch('apps.monitor.scraper._http_get_with_impersonation')
 def test_scrape_portal_http_fail(mock_get):
     mock_get.side_effect = requests.RequestException("Connection Refused")
     with pytest.raises(ScraperException):
         scrape_portal("http://example.com", method="HTTP")
 
 
-@patch('apps.monitor.scraper.requests.get')
+@patch('apps.monitor.scraper._http_get_with_impersonation')
 def test_scrape_portal_pdf_fallback(mock_get):
     mock_resp = MagicMock()
     mock_resp.text = "Hello PDF Content fallback"
