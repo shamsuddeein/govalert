@@ -27,8 +27,9 @@ class MonitorConfig(AppConfig):
             return
 
         from django.conf import settings
-        if getattr(settings, 'USE_CELERY', False):
-            # Skip APScheduler when using Celery
+        # If Celery worker is disabled or in-process scheduler fallback is enabled, start APScheduler
+        if getattr(settings, 'USE_CELERY', False) and getattr(settings, 'DISABLE_IN_PROCESS_SCHEDULER', False):
+            # Skip APScheduler only if explicitly disabled
             return
 
         # To avoid running scheduler twice in dev (reloader) or during

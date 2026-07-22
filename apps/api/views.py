@@ -1957,34 +1957,44 @@ class CustomAdminUserToggleActiveView(APIView):
 class CustomAdminPortalTriggerCheckAllView(APIView):
     """
     POST /api/v1/admin/portals/trigger-check-all/
-    Manually trigger an immediate check across all active portals.
-    Queues background tasks (or executes inline) for each portal.
+    Manually trigger an immediate scrape check across all active portals in parallel.
+    Executes checks and updates portal health statuses in real time.
     """
     permission_classes = [IsStaffUser]
 
     def post(self, request):
+        import concurrent.futures
         from apps.agencies.models import Portal
         from apps.monitor.tasks import portal_check
 
-        active_portals = Portal.objects.filter(is_active=True)
-        count = active_portals.count()
-        triggered_ids = []
+        active_portals = list(Portal.objects.filter(is_active=True))
+        count = len(active_portals)
+        portal_ids = [p.id for p in active_portals]
+        completed_ids = []
 
-        for p in active_portals:
+        from django.db import close_old_connections
+
+        def _do_check(p_id):
             try:
-                if getattr(settings, 'USE_CELERY', False) and hasattr(portal_check, 'delay'):
-                    portal_check.delay(p.id)
-                else:
-                    portal_check(p.id)
-                triggered_ids.append(p.id)
+                close_old_connections()
+                portal_check(p_id)
+                return p_id
             except Exception as exc:
-                logger.error(f"Error triggering check for portal {p.id} ({p.name}): {exc}")
+                logger.error(f"Error executing portal check for portal #{p_id}: {exc}")
+                return None
+            finally:
+                close_old_connections()
+
+        # Execute portal checks in parallel using worker threads
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(_do_check, portal_ids))
+            completed_ids = [pid for pid in results if pid is not None]
 
         return Response({
-            'detail': f"Triggered recheck for {len(triggered_ids)} out of {count} active portals.",
+            'detail': f"Completed immediate recheck for {len(completed_ids)} out of {count} active portals.",
             'total_active_portals': count,
-            'triggered_count': len(triggered_ids),
-            'triggered_portal_ids': triggered_ids,
+            'triggered_count': len(completed_ids),
+            'triggered_portal_ids': completed_ids,
             'timestamp': timezone.now().isoformat(),
         })
 
