@@ -26,11 +26,11 @@ def test_create_alert_from_scrape_fallback(mock_send, mock_ai):
 
     matched_data = {
         'positions': 'Customs Inspector',
-        'deadline': '2025-12-31'
+        'deadline': '2026-12-31'
     }
 
     # 1. Scrape content with recruitment keywords, no fraud keywords
-    content_real = "Welcome to Nigeria Customs Service. The NCS recruitment 2025 is now open. Apply today."
+    content_real = "Welcome to Nigeria Customs Service. The NCS recruitment 2026 is now open. Apply today."
     alert_real = create_alert_from_scrape(portal, content_real, matched_data)
 
     assert alert_real is not None
@@ -45,7 +45,7 @@ def test_create_alert_from_scrape_fallback(mock_send, mock_ai):
         "A high confidence score from the rule engine would bypass human review."
     )
     assert alert_real.positions == 'Customs Inspector'
-    assert alert_real.deadline == '2025-12-31'
+    assert alert_real.deadline == '2026-12-31'
     assert alert_real.status == AlertStatus.PENDING, (
         "Fallback must produce PENDING status. "
         "Auto-approval is only valid when a genuine AI call returns REAL."

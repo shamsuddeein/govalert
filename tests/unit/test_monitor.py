@@ -20,11 +20,11 @@ def test_analyze_diff():
 
 
 def test_match_recruitment_keywords():
-    text = "NCS Recruitment 2025. Apply now for multiple positions. Deadline is December 31, 2025."
+    text = "NCS Recruitment 2026. Apply now for multiple positions. Deadline is December 31, 2026."
     res = match_recruitment_keywords(text)
     assert res['is_recruitment'] is True
     assert res['confidence'] == 'HIGH'
-    assert "December 31, 2025" in res['deadline']
+    assert "December 31, 2026" in res['deadline']
 
 
 @patch('apps.monitor.scraper._http_get_with_impersonation')
