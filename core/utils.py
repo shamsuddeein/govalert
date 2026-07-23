@@ -95,6 +95,7 @@ def build_trust_badge(trust_score: int) -> str:
         return '❌ FLAGGED AS FAKE'
 
 
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -138,26 +139,44 @@ def record_page_visitor(request):
 def get_visitor_telemetry() -> dict:
     """
     Get aggregated visitor telemetry metrics.
+    Returns 100% real collected metrics starting at 0.
+    Gated behind settings.DEMO_MODE if demo metrics are requested.
     """
-    try:
-        today_str = timezone.now().strftime('%Y-%m-%d')
-        
-        active_online = cache.get("active_online_visitors_override") or 142
-        visitors_today = cache.get(f"visitors_count_{today_str}") or 3480
-        page_views_today = cache.get(f"page_views_{today_str}") or 12850
-        all_time_visitors = cache.get("all_time_visitors_count") or 284500
-        
-        return {
-            'active_online_visitors': int(active_online),
-            'visitors_today': int(visitors_today),
-            'page_views_today': int(page_views_today),
-            'all_time_visitors': int(all_time_visitors),
-        }
-    except Exception:
+    if getattr(settings, 'DEMO_MODE', False):
         return {
             'active_online_visitors': 142,
             'visitors_today': 3480,
             'page_views_today': 12850,
             'all_time_visitors': 284500,
+            'has_data': True,
+            'is_demo_mode': True,
+        }
+
+    try:
+        today_str = timezone.now().strftime('%Y-%m-%d')
+
+        active_online = cache.get("metrics_active_visitors_online") or cache.get("active_online_visitors_override") or 0
+        visitors_today = cache.get(f"visitors_count_{today_str}") or 0
+        page_views_today = cache.get(f"page_views_{today_str}") or 0
+        all_time_visitors = cache.get("all_time_visitors_count") or 0
+
+        has_data = bool(active_online > 0 or visitors_today > 0 or page_views_today > 0 or all_time_visitors > 0)
+
+        return {
+            'active_online_visitors': int(active_online),
+            'visitors_today': int(visitors_today),
+            'page_views_today': int(page_views_today),
+            'all_time_visitors': int(all_time_visitors),
+            'has_data': has_data,
+            'is_demo_mode': False,
+        }
+    except Exception:
+        return {
+            'active_online_visitors': 0,
+            'visitors_today': 0,
+            'page_views_today': 0,
+            'all_time_visitors': 0,
+            'has_data': False,
+            'is_demo_mode': False,
         }
 
