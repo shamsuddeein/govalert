@@ -148,6 +148,8 @@ def get_visitor_telemetry() -> dict:
             'visitors_today': 3480,
             'page_views_today': 12850,
             'all_time_visitors': 284500,
+            'bot_hits_today': 420,
+            'human_hits_today': 12430,
             'has_data': True,
             'is_demo_mode': True,
         }
@@ -159,14 +161,18 @@ def get_visitor_telemetry() -> dict:
         visitors_today = cache.get(f"visitors_count_{today_str}") or 0
         page_views_today = cache.get(f"page_views_{today_str}") or 0
         all_time_visitors = cache.get("all_time_visitors_count") or 0
+        bot_hits_today = cache.get(f"bot_hits_{today_str}") or 0
+        human_hits_today = cache.get(f"human_hits_{today_str}") or 0
 
-        has_data = bool(active_online > 0 or visitors_today > 0 or page_views_today > 0 or all_time_visitors > 0)
+        has_data = bool(active_online > 0 or visitors_today > 0 or page_views_today > 0 or all_time_visitors > 0 or bot_hits_today > 0)
 
         return {
             'active_online_visitors': int(active_online),
             'visitors_today': int(visitors_today),
             'page_views_today': int(page_views_today),
             'all_time_visitors': int(all_time_visitors),
+            'bot_hits_today': int(bot_hits_today),
+            'human_hits_today': int(human_hits_today),
             'has_data': has_data,
             'is_demo_mode': False,
         }
@@ -176,6 +182,8 @@ def get_visitor_telemetry() -> dict:
             'visitors_today': 0,
             'page_views_today': 0,
             'all_time_visitors': 0,
+            'bot_hits_today': 0,
+            'human_hits_today': 0,
             'has_data': False,
             'is_demo_mode': False,
         }

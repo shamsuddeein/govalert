@@ -11,6 +11,20 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+BOT_USER_AGENTS = (
+    'bot', 'crawler', 'spider', 'slurp', 'googlebot', 'bingbot', 'yandex',
+    'duckduckbot', 'facebookexternalhit', 'twitterbot', 'telegrambot',
+    'whatsapp', 'python-requests', 'scrapy', 'curl', 'wget', 'gptbot',
+    'claudebot', 'perplexitybot', 'bytespider', 'semrushbot', 'ahrefsbot',
+    'mj12bot', 'headlesschrome', 'puppeteer', 'playwright'
+)
+
+
+def is_bot_user_agent(user_agent: str) -> bool:
+    ua = (user_agent or '').lower()
+    return any(b in ua for b in BOT_USER_AGENTS)
+
+
 class VisitorTrackingMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -41,6 +55,8 @@ class VisitorTrackingMiddleware:
 
     def _record_visitor(self, request):
         ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '127.0.0.1')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        is_bot = is_bot_user_agent(user_agent)
         today_str = timezone.now().strftime('%Y-%m-%d')
         now_ts = int(timezone.now().timestamp())
 
@@ -56,14 +72,27 @@ class VisitorTrackingMiddleware:
             except Exception:
                 cache.set(f"visitors_count_{today_str}", 1, timeout=86400 * 7)
 
-        # 3. Increment page views today
+        # 3. Track Bot vs Human hits
+        if is_bot:
+            try:
+                cache.incr(f"bot_hits_{today_str}", delta=1)
+            except Exception:
+                cache.set(f"bot_hits_{today_str}", 1, timeout=86400 * 7)
+        else:
+            try:
+                cache.incr(f"human_hits_{today_str}", delta=1)
+            except Exception:
+                cache.set(f"human_hits_{today_str}", 1, timeout=86400 * 7)
+
+        # 4. Increment total page views today
         try:
             cache.incr(f"page_views_{today_str}", delta=1)
         except Exception:
             cache.set(f"page_views_{today_str}", 1, timeout=86400 * 7)
 
-        # 4. Increment all time cumulative page views
+        # 5. Increment all time cumulative page views
         try:
             cache.incr("all_time_visitors_count", delta=1)
         except Exception:
             cache.set("all_time_visitors_count", 1, timeout=None)
+
