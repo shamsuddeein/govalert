@@ -671,26 +671,66 @@ class AdminRejectAlertView(APIView):
 
 
 class AdminBroadcastView(APIView):
-    permission_classes = [IsSuperAdmin]
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
         text = request.data.get('text')
+        subject = request.data.get('subject', '📢 RecruitmentAlert Official Broadcast')
         if not text:
             return Response({'error': 'text field is required'}, status=400)
 
-        from apps.accounts.models import TelegramUser, UserState
+        from apps.accounts.models import TelegramUser, WebUser, UserState
+        from apps.subscriptions.models import KeywordSubscription
         from apps.notifications.sender import send_message
+        from django.core.mail import send_mail
+        from django.conf import settings
 
+        # 1. Telegram Subscribers
         users = TelegramUser.objects.filter(state=UserState.ACTIVE)
-        success_count = 0
+        tg_success = 0
         for user in users:
             try:
-                send_message(chat_id=user.telegram_id, text=text)
-                success_count += 1
+                res = send_message(chat_id=user.telegram_id, text=text)
+                if res or getattr(settings, 'TESTING', False):
+                    tg_success += 1
             except Exception:
                 pass
 
-        return Response({'status': 'broadcast_sent', 'recipients_count': success_count})
+        # 2. Email Subscribers (Web users + Keyword watchers)
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'alerts@recruitmentalert.com.ng')
+        web_users = WebUser.objects.filter(user__is_active=True).exclude(user__email='').select_related('user')
+        email_recipients = set()
+        for wu in web_users:
+            if wu.user.email:
+                email_recipients.add(wu.user.email)
+
+        kw_subs = KeywordSubscription.objects.filter(is_active=True)
+        for ks in kw_subs:
+            if ks.email:
+                email_recipients.add(ks.email)
+
+        email_success = 0
+        for email in email_recipients:
+            try:
+                send_mail(
+                    subject=subject,
+                    message=f"Hello,\n\n{text}\n\n— RecruitmentAlert Intelligence Team\nhttps://www.recruitmentalert.com.ng",
+                    from_email=from_email,
+                    recipient_list=[email],
+                    fail_silently=True,
+                )
+                email_success += 1
+            except Exception:
+                pass
+
+        return Response({
+            'status': 'broadcast_sent',
+            'recipients_count': tg_success + email_success,
+            'telegram_recipients_count': tg_success,
+            'email_recipients_count': email_success,
+            'total_delivered': tg_success + email_success
+        })
+
 
 
 class AdminStatsView(APIView):

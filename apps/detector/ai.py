@@ -53,6 +53,7 @@ def summarize_recruitment_with_openai(title: str, agency_name: str, content: str
 
     prompt = (
         "Summarize the following Nigerian public sector recruitment notice.\n"
+        "IMPORTANT FOR DEADLINE: Ignore dates prior to 2026 as expired. Ensure deadline date includes a valid English month name or numerical format. If no active upcoming deadline is specified, set deadline_text to 'Not specified'. Rejects non-date text like '31 of 1993'.\n"
         "Return ONLY a JSON object with this exact structure:\n"
         "{\n"
         '  "summary_overview": "Concise 2-sentence executive summary of the recruitment",\n'
@@ -69,6 +70,9 @@ def summarize_recruitment_with_openai(title: str, agency_name: str, content: str
 
     ai_res = _call_openai(prompt)
     if ai_res:
+        from apps.monitor.parser import validate_and_sanitize_deadline
+        if 'deadline_text' in ai_res:
+            ai_res['deadline_text'] = validate_and_sanitize_deadline(ai_res.get('deadline_text', ''))
         return ai_res
 
     # Rule-based fallback summary

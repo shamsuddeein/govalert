@@ -55,6 +55,8 @@ NOISE_PATTERNS = [
     r'google analytics', r'social media', r'follow us', r'subscribe to',
 ]
 
+MONTH_PATTERN = r'(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)'
+
 DEADLINE_PATTERNS = [
     r'(?i)deadline[:\s]+(.{5,60})',
     r'(?i)closing date[:\s]+(.{5,60})',
@@ -62,11 +64,51 @@ DEADLINE_PATTERNS = [
     r'(?i)submit\s+(?:on\s+or\s+)?before\s+(.{5,60})',
     r'(?i)on\s+or\s+before\s+(.{5,60})',
     r'(?i)not\s+later\s+than\s+(.{5,60})',
-    # Nigerian date formats
-    r'\d{1,2}(?:st|nd|rd|th)?\s+\w+\s+\d{4}',
-    r'\d{1,2}/\d{1,2}/\d{4}',
-    r'\d{4}-\d{2}-\d{2}',
+    # Nigerian date formats (strictly matching month names instead of \w+)
+    rf'\b\d{{1,2}}(?:st|nd|rd|th)?\s+{MONTH_PATTERN}\s+\d{{4}}\b',
+    rf'\b{MONTH_PATTERN}\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}\b',
+    r'\b\d{1,2}/\d{1,2}/\d{4}\b',
+    r'\b\d{4}-\d{2}-\d{2}\b',
 ]
+
+
+def validate_and_sanitize_deadline(deadline_str: str) -> str:
+    """
+    Sanitize and validate an extracted deadline string.
+    
+    1. Rejects invalid non-date patterns (e.g. "31 of 1993").
+    2. Rejects deadlines with years prior to the current year (e.g. 2024 when current year is 2026).
+    3. Normalizes and caps length.
+    """
+    if not deadline_str or not isinstance(deadline_str, str):
+        return "Not Specified"
+
+    deadline_str = deadline_str.strip()
+    if deadline_str.lower() in ["not specified", "check portal", "check website", "n/a", "none"]:
+        return "Not Specified"
+
+    import datetime
+    current_year = datetime.datetime.now().year
+
+    # Check for 4-digit years in the string
+    years_found = [int(y) for y in re.findall(r'\b(19\d\d|20\d\d)\b', deadline_str)]
+    if years_found:
+        # If all mentioned years are in the past (< current_year), discard as expired date
+        if max(years_found) < current_year:
+            logger.info(f"Ignoring expired deadline '{deadline_str}' (year {max(years_found)} < current year {current_year}).")
+            return "Not Specified"
+
+    # Reject strings like "31 of 1993" or generic non-dates
+    has_letters = bool(re.search(r'[a-zA-Z]', deadline_str))
+    if has_letters:
+        has_month = bool(re.search(MONTH_PATTERN, deadline_str, re.IGNORECASE))
+        relative_match = re.search(r'\b\d+\s+(?:days?|weeks?|months?)\b', deadline_str, re.IGNORECASE)
+        if not has_month and not relative_match:
+            return "Not Specified"
+
+    # Truncate clean whitespace
+    cleaned = re.sub(r'\s+', ' ', deadline_str).strip()
+    return cleaned[:80] if len(cleaned) >= 5 else "Not Specified"
 
 
 def clean_html_to_text(html_content: str, content_type: str = '') -> str:
@@ -172,12 +214,15 @@ def match_recruitment_keywords(text: str) -> dict:
         confidence = 'LOW'
 
     # Extract deadline
-    deadline = ''
+    raw_deadline = ''
     for pattern in DEADLINE_PATTERNS:
-        match = re.search(pattern, text)
+        match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            deadline = match.group(1).strip() if match.groups() else match.group(0).strip()
+            raw_deadline = match.group(1).strip() if match.groups() else match.group(0).strip()
             break
+
+    # Sanitize and validate deadline
+    deadline = validate_and_sanitize_deadline(raw_deadline)
 
     # Extract position titles/roles
     positions_list = []
@@ -196,7 +241,8 @@ def match_recruitment_keywords(text: str) -> dict:
     return {
         'is_recruitment': is_recruitment,
         'confidence': confidence,
-        'deadline': deadline[:100] if deadline else 'Not Specified',
+        'deadline': deadline,
         'positions': positions[:250],
         'rule_matches': high_matches + med_matches,
     }
+

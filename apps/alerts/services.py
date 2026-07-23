@@ -102,10 +102,12 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     logger.info(f"Alert queued as PENDING for human admin review (trust_score={trust_score}).")
 
     # 4. Extract and normalize recruitment data
+    from apps.monitor.parser import validate_and_sanitize_deadline
     extracted = ai_res.get('extracted', {})
     title = f"{agency.acronym} Recruitment Update Detected"
     # Prioritize matched_data (from scraper) over AI extraction, as it's more accurate
-    deadline = matched_data.get('deadline') or extracted.get('deadline') or ""
+    raw_deadline = matched_data.get('deadline') or extracted.get('deadline') or ""
+    deadline = validate_and_sanitize_deadline(raw_deadline)
     positions = matched_data.get('positions') or extracted.get('positions') or "Multiple Positions"
     
     # 5. Generate fingerprint for deduplication
