@@ -745,11 +745,15 @@ class AdminStatsView(APIView):
 
         today = timezone.now().date()
 
+        from core.utils import get_visitor_telemetry
         avg_ms = Snapshot.objects.filter(
             response_time_ms__isnull=False
         ).aggregate(Avg('response_time_ms'))['response_time_ms__avg']
 
+        visitor_stats = get_visitor_telemetry()
+
         return Response({
+            'visitor_stats': visitor_stats,
             'total_users': TelegramUser.objects.count(),
             'active_users': TelegramUser.objects.filter(state='ACTIVE').count(),
             'total_agencies': Agency.objects.filter(is_active=True).count(),
@@ -1693,7 +1697,9 @@ class CustomAdminSystemHealthView(APIView):
 
         system_operational = (agencies_offline == 0)
 
+        from core.utils import get_visitor_telemetry
         system_status = {
+            'visitor_stats': get_visitor_telemetry(),
             'agencies_online': agencies_online,
             'agencies_offline': agencies_offline,
             'agencies_maintenance': agencies_maintenance,
