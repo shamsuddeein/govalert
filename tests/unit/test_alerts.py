@@ -83,6 +83,9 @@ def test_position_change_creates_linked_update_event(mock_ai):
         portal, 'Recruitment is open. Apply now.',
         {'positions': 'Officer', 'deadline': '2026-08-01'},
     )
+    first.status = AlertStatus.APPROVED
+    first.save()
+
     update = create_alert_from_scrape(
         portal, 'Recruitment is open. Apply now.',
         {'positions': 'Officer, Inspector', 'deadline': '2026-08-01'},
@@ -91,3 +94,42 @@ def test_position_change_creates_linked_update_event(mock_ai):
     assert update.pk != first.pk
     assert update.recruitment_event.previous_event_id == first.recruitment_event_id
     assert update.recruitment_event.fingerprint == first.recruitment_event.fingerprint
+
+
+@pytest.mark.django_db
+@patch('apps.alerts.services.classify_recruitment_with_ai')
+def test_pending_alert_coalescing_and_deadline_flapping(mock_ai):
+    """
+    Verify that repeated scrapes on a portal with an unreviewed PENDING alert coalesce into
+    a single PENDING alert card in-place instead of spawning 17 duplicate PENDING cards.
+    Also verify that flapping to 'Not Specified' deadline does not create a duplicate update alert.
+    """
+    mock_ai.return_value = {
+        'classification': 'REAL', 'confidence': 70,
+        'event_type': 'RECRUITMENT_OPEN', 'red_flags': [],
+        'extracted': {'positions': 'Multiple Positions', 'deadline': '6TH APRIL 2026', 'requirements': 'Check portal'},
+    }
+    agency = Agency.objects.create(name='Federal Ministry of Interior', acronym='FMI', official_domains=['interior.gov.ng'])
+    portal = Portal.objects.create(agency=agency, name='FMI Portal', url='https://interior.gov.ng')
+
+    # Scrape 1: Creates initial PENDING alert
+    alert1 = create_alert_from_scrape(
+        portal, 'FMI recruitment notice. Apply online.',
+        {'positions': 'Multiple Positions', 'deadline': '6TH APRIL 2026'}
+    )
+    assert alert1.status == AlertStatus.PENDING
+    assert Alert.objects.filter(portal=portal, status=AlertStatus.PENDING).count() == 1
+
+    # Scrape 2 (Flapping deadline to 'Not Specified'): Should coalesce in-place without creating a 2nd card
+    mock_ai.return_value['extracted']['deadline'] = 'Not Specified'
+    alert2 = create_alert_from_scrape(
+        portal, 'FMI recruitment notice. Apply online.',
+        {'positions': 'Multiple Positions', 'deadline': 'Not Specified'}
+    )
+
+    assert alert2.pk == alert1.pk
+    assert Alert.objects.filter(portal=portal, status=AlertStatus.PENDING).count() == 1
+    # Deadline should be preserved as 6TH APRIL 2026
+    alert2.refresh_from_db()
+    assert alert2.deadline == '6TH APRIL 2026'
+

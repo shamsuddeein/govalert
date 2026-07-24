@@ -1054,6 +1054,12 @@ class CustomAdminAlertListView(APIView):
     permission_classes = [IsStaffUser]
 
     def get(self, request):
+        from apps.alerts.services import reconcile_duplicate_pending_alerts
+        try:
+            reconcile_duplicate_pending_alerts()
+        except Exception as e:
+            logger.warning(f"Failed to reconcile duplicate pending alerts: {e}")
+
         status_param = request.query_params.get('status', 'PENDING').strip()
         agency_param = request.query_params.get('agency', '').strip()
         ai_class_param = request.query_params.get('ai_classification', '').strip()

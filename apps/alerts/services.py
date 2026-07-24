@@ -119,7 +119,39 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
         agency_name=agency.name
     )
 
-    # 6. Check if fingerprint already exists (detects duplicates and updates)
+    # 6. Pending Alert Coalescing: If an unreviewed PENDING alert already exists for this portal,
+    # update it in-place instead of flooding the queue with duplicate PENDING cards.
+    existing_pending_alert = Alert.objects.filter(
+        portal=portal,
+        status=AlertStatus.PENDING,
+    ).order_by('-created_at').first()
+
+    from apps.alerts.fingerprint import _is_unspecified_deadline
+
+    if existing_pending_alert:
+        existing_pending_alert.title = title
+        if deadline and not _is_unspecified_deadline(deadline):
+            existing_pending_alert.deadline = deadline
+        if positions and positions != "Multiple Positions":
+            existing_pending_alert.positions = positions
+        existing_pending_alert.content_excerpt = content[:2000]
+        existing_pending_alert.trust_score = trust_score
+        existing_pending_alert.ai_classification = ai_res.get('classification') or 'UNCERTAIN'
+        existing_pending_alert.ai_confidence = ai_confidence
+        existing_pending_alert.ai_red_flags = ai_res.get('red_flags') or []
+        existing_pending_alert.created_at = timezone.now()
+        existing_pending_alert.save()
+
+        # Delete any extra duplicate pending alerts for this portal
+        Alert.objects.filter(
+            portal=portal,
+            status=AlertStatus.PENDING
+        ).exclude(id=existing_pending_alert.id).delete()
+
+        logger.info(f"Updated existing PENDING alert #{existing_pending_alert.id} for portal {portal.name} in-place.")
+        return existing_pending_alert
+
+    # 7. Check if fingerprint already exists (detects duplicates and updates)
     # The newest event is the current state of this recruitment's update chain.
     existing_event = RecruitmentEvent.objects.filter(fingerprint=fingerprint).order_by('-created_at').first()
     changes_dict = {}  # Track what changed for DecisionLog
@@ -272,4 +304,30 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
             dispatch_alert.delay(alert.id)
 
     return alert
+
+
+def reconcile_duplicate_pending_alerts() -> int:
+    """
+    Consolidate duplicate PENDING alerts per portal/agency down to 1 most recent pending alert.
+    Deletes older unreviewed duplicate PENDING alerts.
+    Returns count of deleted duplicate pending alerts.
+    """
+    pending_alerts = Alert.objects.filter(status=AlertStatus.PENDING)
+    deleted_count = 0
+    portals_with_pending = pending_alerts.values_list('portal_id', flat=True).distinct()
+
+    for portal_id in portals_with_pending:
+        if portal_id is None:
+            continue
+        alerts = list(Alert.objects.filter(portal_id=portal_id, status=AlertStatus.PENDING).order_by('-created_at'))
+        if len(alerts) > 1:
+            keep_alert = alerts[0]
+            to_delete = alerts[1:]
+            delete_ids = [a.id for a in to_delete]
+            count, _ = Alert.objects.filter(id__in=delete_ids).delete()
+            deleted_count += count
+            logger.info(f"Cleaned up {count} duplicate PENDING alerts for portal #{portal_id}, kept alert #{keep_alert.id}.")
+
+    return deleted_count
+
 

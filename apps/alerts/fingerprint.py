@@ -67,6 +67,13 @@ url={normalized['url']}"""
     return fingerprint
 
 
+def _is_unspecified_deadline(d: str) -> bool:
+    if not d:
+        return True
+    clean = d.strip().lower()
+    return clean in ['not specified', 'check website', 'n/a', 'none', '']
+
+
 def detect_update(
     new_fingerprint: str,
     new_data: Dict[str, Any],
@@ -91,12 +98,18 @@ def detect_update(
     
     # Check deadline (can change - deadline extended, etc)
     new_deadline = new_data.get('deadline', '')
-    if new_deadline and new_deadline != existing_event.deadline:
-        changes['deadline'] = {
-            'old': existing_event.deadline,
-            'new': new_deadline,
-            'type': 'deadline_extended' if len(new_deadline) > len(existing_event.deadline) else 'deadline_changed'
-        }
+    old_deadline = existing_event.deadline or ''
+
+    if new_deadline and new_deadline != old_deadline:
+        # Ignore if new_deadline is unspecified/empty while old_deadline is valid
+        if not _is_unspecified_deadline(old_deadline) and _is_unspecified_deadline(new_deadline):
+            logger.debug(f"Ignoring deadline flap to unspecified ('{new_deadline}') over valid old deadline ('{old_deadline}').")
+        else:
+            changes['deadline'] = {
+                'old': old_deadline,
+                'new': new_deadline,
+                'type': 'deadline_extended' if len(new_deadline) > len(old_deadline) else 'deadline_changed'
+            }
     
     # Check positions (can change - more positions added, etc)
     new_positions = new_data.get('positions', '')
