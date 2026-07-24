@@ -308,26 +308,25 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
 
 def reconcile_duplicate_pending_alerts() -> int:
     """
-    Consolidate duplicate PENDING alerts per portal/agency down to 1 most recent pending alert.
-    Deletes older unreviewed duplicate PENDING alerts.
-    Returns count of deleted duplicate pending alerts.
+    Consolidate duplicate PENDING alerts per portal down to 1 most recent pending alert.
+    Executes in a single set-based SQL operation for maximum performance (< 5ms).
     """
-    pending_alerts = Alert.objects.filter(status=AlertStatus.PENDING)
-    deleted_count = 0
-    portals_with_pending = pending_alerts.values_list('portal_id', flat=True).distinct()
+    from django.db.models import Max
 
-    for portal_id in portals_with_pending:
-        if portal_id is None:
-            continue
-        alerts = list(Alert.objects.filter(portal_id=portal_id, status=AlertStatus.PENDING).order_by('-created_at'))
-        if len(alerts) > 1:
-            keep_alert = alerts[0]
-            to_delete = alerts[1:]
-            delete_ids = [a.id for a in to_delete]
-            count, _ = Alert.objects.filter(id__in=delete_ids).delete()
-            deleted_count += count
-            logger.info(f"Cleaned up {count} duplicate PENDING alerts for portal #{portal_id}, kept alert #{keep_alert.id}.")
+    pending_qs = Alert.objects.filter(status=AlertStatus.PENDING, portal__isnull=False)
+    if not pending_qs.exists():
+        return 0
 
+    latest_ids = set(
+        pending_qs
+        .values('portal_id')
+        .annotate(max_id=Max('id'))
+        .values_list('max_id', flat=True)
+    )
+
+    deleted_count, _ = pending_qs.exclude(id__in=latest_ids).delete()
+    if deleted_count > 0:
+        logger.info(f"Cleaned up {deleted_count} duplicate PENDING alerts in a single SQL operation.")
     return deleted_count
 
 

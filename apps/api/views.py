@@ -1865,35 +1865,40 @@ class CustomAdminSystemHealthView(APIView):
         recent_failed_snapshots.sort(key=lambda s: s['timestamp'], reverse=True)
         recent_failed_snapshots = recent_failed_snapshots[:20]
 
-        # 4. 7-Day Daily Trend (from PortalHealthLog with Snapshot fallback)
+        # 4. 7-Day Daily Trend (Optimized single-query aggregation)
+        cutoff_7d = today - timedelta(days=6)
+        day_map = { (today - timedelta(days=i)).strftime('%Y-%m-%d'): {'total': 0, 'success': 0} for i in range(7) }
+
+        health_logs = PortalHealthLog.objects.filter(date__gte=cutoff_7d)
+        if health_logs.exists():
+            for log in health_logs:
+                d_str = log.date.strftime('%Y-%m-%d')
+                if d_str in day_map:
+                    day_map[d_str]['total'] += log.checks_total or 0
+                    day_map[d_str]['success'] += log.checks_successful or 0
+        else:
+            snaps_7d = Snapshot.objects.filter(created_at__date__gte=cutoff_7d).values('created_at__date', 'status_code')
+            for snap in snaps_7d:
+                d_obj = snap['created_at__date']
+                if d_obj:
+                    d_str = d_obj.strftime('%Y-%m-%d')
+                    if d_str in day_map:
+                        day_map[d_str]['total'] += 1
+                        if snap['status_code'] and snap['status_code'] < 400:
+                            day_map[d_str]['success'] += 1
+
         daily_trend_7_days = []
         for i in range(6, -1, -1):
-            day_date = today - timedelta(days=i)
-
-            health_logs = PortalHealthLog.objects.filter(date=day_date)
-            if health_logs.exists():
-                agg = health_logs.aggregate(
-                    total=Sum('checks_total'),
-                    success=Sum('checks_successful'),
-                    failed=Sum('checks_failed')
-                )
-                total_checks = agg['total'] or 0
-                successful_checks = agg['success'] or 0
-                failed_checks = agg['failed'] or 0
-                success_rate = round((successful_checks / total_checks * 100), 2) if total_checks > 0 else None
-            else:
-                day_snaps = Snapshot.objects.filter(created_at__date=day_date)
-                total_checks = day_snaps.count()
-                successful_checks = day_snaps.filter(status_code__lt=400).count()
-                failed_checks = total_checks - successful_checks
-                success_rate = round((successful_checks / total_checks * 100), 2) if total_checks > 0 else None
-
+            d_str = (today - timedelta(days=i)).strftime('%Y-%m-%d')
+            c = day_map.get(d_str, {'total': 0, 'success': 0})
+            tot = c['total']
+            succ = c['success']
             daily_trend_7_days.append({
-                'date': day_date.strftime('%Y-%m-%d'),
-                'total_checks': total_checks,
-                'successful_checks': successful_checks,
-                'failed_checks': failed_checks,
-                'success_rate': success_rate,
+                'date': d_str,
+                'total_checks': tot,
+                'successful_checks': succ,
+                'failed_checks': max(0, tot - succ),
+                'success_rate': round((succ / tot * 100), 2) if tot > 0 else None,
             })
 
         return Response({
