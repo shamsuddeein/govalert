@@ -951,7 +951,7 @@ class SavedJobDetailView(APIView):
 
 from core.permissions import IsStaffUser
 from apps.api.serializers import (
-    AdminAlertDetailSerializer, AdminAgencySerializer,
+    AdminAlertDetailSerializer, AdminAlertCreateSerializer, AdminAgencySerializer,
     SnapshotSerializer, AdminPortalSerializer, AdminPortalDetailSerializer,
 )
 from apps.alerts.models import Alert, AlertStatus
@@ -1086,6 +1086,43 @@ class CustomAdminAlertListView(APIView):
         page = paginator.paginate_queryset(qs, request)
         serializer = AdminAlertDetailSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = AdminAlertCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
+
+        notify_subscribers = serializer.validated_data.pop('notify_subscribers', False)
+        
+        now = timezone.now()
+        alert = serializer.save()
+
+        # If created as APPROVED, record verification info automatically
+        if alert.status == AlertStatus.APPROVED:
+            alert.is_verified = True
+            alert.verified_by = request.user
+            alert.verified_at = now
+            if not alert.trust_score:
+                alert.trust_score = 100
+            alert.save(update_fields=['is_verified', 'verified_by', 'verified_at', 'trust_score', 'updated_at'])
+
+            from apps.alerts.services import supersede_older_alerts
+            supersede_older_alerts(alert)
+
+            if notify_subscribers:
+                from apps.notifications.tasks import dispatch_alert
+                try:
+                    dispatch_alert.delay(alert.id)
+                except Exception:
+                    try:
+                        dispatch_alert(alert.id)
+                    except Exception as exc:
+                        logger.warning(f"Failed to trigger alert dispatch: {exc}")
+
+        return Response({
+            'detail': 'Job alert created successfully.',
+            'alert': AdminAlertDetailSerializer(alert).data
+        }, status=http_status.HTTP_201_CREATED)
 
 
 class CustomAdminAlertApproveView(APIView):

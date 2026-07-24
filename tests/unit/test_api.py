@@ -517,6 +517,43 @@ def test_instant_multi_channel_subscriber_dispatch(mocker):
     assert "kw_sub@example.com" in recipients
 
 
+@pytest.mark.django_db
+def test_admin_create_job_api():
+    """
+    Test POST /api/v1/admin/alerts/ allows staff users to manually post job alerts.
+    """
+    staff_user = User.objects.create_user(username="staff_post_admin", is_staff=True)
+    agency = Agency.objects.create(name="Nigeria Immigration Service", acronym="NIS", is_active=True)
+
+    client = APIClient()
+    client.force_authenticate(user=staff_user)
+
+    url = reverse('api:admin_alert_list')
+    payload = {
+        "agency_id": agency.id,
+        "title": "NIS 2026 Recruitment Posting",
+        "event_type": EventType.RECRUITMENT_OPEN,
+        "positions": "Superintendent, Inspector",
+        "deadline": "31 August 2026",
+        "requirements": "B.Sc, WAEC",
+        "source_url": "https://immigration.gov.ng",
+        "trust_score": 100,
+        "status": "APPROVED",
+    }
+
+    res = client.post(url, payload, format='json')
+    assert res.status_code == 201
+    assert res.data['alert']['title'] == "NIS 2026 Recruitment Posting"
+    assert res.data['alert']['is_verified'] is True
+    assert res.data['alert']['verified_by'] == "staff_post_admin"
+
+    # Verify present in DB
+    alert = Alert.objects.get(pk=res.data['alert']['id'])
+    assert alert.agency == agency
+    assert alert.status == AlertStatus.APPROVED
+
+
+
 
 
 

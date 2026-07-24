@@ -595,5 +595,34 @@ class AdminPortalDetailSerializer(AdminPortalSerializer):
         return SnapshotSerializer(snapshots, many=True).data
 
 
+class AdminAlertCreateSerializer(serializers.ModelSerializer):
+    agency_id = serializers.PrimaryKeyRelatedField(
+        queryset=Agency.objects.filter(is_active=True),
+        source='agency',
+        required=True
+    )
+    portal_id = serializers.PrimaryKeyRelatedField(
+        queryset=Portal.objects.all(),
+        source='portal',
+        required=False,
+        allow_null=True
+    )
+    notify_subscribers = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    class Meta:
+        model = Alert
+        fields = [
+            'agency_id', 'portal_id', 'event_type', 'title',
+            'positions', 'deadline', 'requirements', 'source_url',
+            'content_excerpt', 'trust_score', 'status', 'notify_subscribers',
+        ]
+
+    def validate_trust_score(self, value):
+        if not (0 <= value <= 100):
+            raise serializers.ValidationError("trust_score must be between 0 and 100.")
+        return value
+
+
+
 
 
