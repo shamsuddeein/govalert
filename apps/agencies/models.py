@@ -40,6 +40,7 @@ class HealthStatus(models.TextChoices):
     CAPTCHA = 'CAPTCHA', 'Captcha Challenge Detected'
     RATE_LIMITED = 'RATE_LIMITED', 'Rate Limited'
     MAINTENANCE = 'MAINTENANCE', 'Under Maintenance'
+    DEGRADED = 'DEGRADED', 'Degraded'
     UNKNOWN = 'UNKNOWN', 'Unknown'
 
 
@@ -51,6 +52,7 @@ class PortalStatus(models.TextChoices):
     MAINTENANCE = 'MAINTENANCE', 'Under Maintenance'
     CHANGED_LAYOUT = 'CHANGED_LAYOUT', 'Changed Layout'
     RATE_LIMITED = 'RATE_LIMITED', 'Rate Limited'
+    DEGRADED = 'DEGRADED', 'Degraded'
     UNKNOWN = 'UNKNOWN', 'Unknown'
     UP = 'UP', 'Up (Deprecated)'
     DOWN = 'DOWN', 'Down (Deprecated)'
@@ -279,3 +281,35 @@ class Portal(models.Model):
             # PAUSED and DOWN are deprecated PortalStatus values that don't exist
             # in HealthStatus, so checking health_status is sufficient here.
         ]
+
+    def calculate_backoff_interval_minutes(self) -> int:
+        """
+        Calculate exponential backoff check interval in minutes based on consecutive_failures:
+        - 0-3 consecutive failures: 15 minutes (normal)
+        - 4-6 consecutive failures: 1 hour (60 minutes)
+        - 7-9 consecutive failures: 3 hours (180 minutes)
+        - 10+ consecutive failures: 6 hours (360 minutes) & DEGRADED
+        """
+        if self.consecutive_failures <= 3:
+            return 15
+        elif 4 <= self.consecutive_failures <= 6:
+            return 60
+        elif 7 <= self.consecutive_failures <= 9:
+            return 180
+        else:
+            return 360
+
+    @property
+    def is_due_for_check(self) -> bool:
+        """
+        Returns True if this portal is active, not under maintenance,
+        and its last check was longer ago than its check_interval_minutes (with 30s grace window).
+        """
+        if not self.is_active or self.health_status == HealthStatus.MAINTENANCE:
+            return False
+        if not self.last_checked_at:
+            return True
+        from django.utils import timezone
+        interval_secs = self.poll_interval if self.poll_interval else (self.check_interval_minutes * 60)
+        elapsed_secs = (timezone.now() - self.last_checked_at).total_seconds()
+        return elapsed_secs >= (interval_secs - 30)

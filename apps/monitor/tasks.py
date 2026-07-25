@@ -77,28 +77,36 @@ def portal_check(self, portal_id: int):
     portal.last_checked_at = timezone.now()
 
     if not success:
-        portal.status = PortalStatus.OFFLINE
-        portal.health_status = HealthStatus.OFFLINE  # Keep deprecated+current in sync
         portal.consecutive_failures += 1
+        portal.check_interval_minutes = portal.calculate_backoff_interval_minutes()
+        portal.poll_interval = portal.check_interval_minutes * 60
 
-        if portal.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-            # Auto-suspend : stop wasting scrape budget on dead portals.
-            portal.is_active = False
-            portal.save(update_fields=[
-                'last_checked_at', 'status', 'health_status', 'consecutive_failures', 'is_active'
-            ])
+        if portal.consecutive_failures >= 10:
+            portal.status = PortalStatus.DEGRADED
+            portal.health_status = HealthStatus.DEGRADED
             logger.warning(
-                f"Portal SUSPENDED after {portal.consecutive_failures} consecutive failures: "
-                f"{portal.name} ({portal.url}). "
-                f"Set is_active=True in Django admin to re-enable."
+                f"Portal flagged as DEGRADED after {portal.consecutive_failures} consecutive failures: "
+                f"{portal.name} ({portal.url}). Check interval adjusted to {portal.check_interval_minutes} minutes."
             )
         else:
-            portal.save(update_fields=['last_checked_at', 'status', 'health_status', 'consecutive_failures'])
+            portal.status = PortalStatus.OFFLINE
+            portal.health_status = HealthStatus.OFFLINE
+            logger.warning(
+                f"Portal check failed ({portal.consecutive_failures} consecutive failures): "
+                f"{portal.name} ({portal.url}). Check interval adjusted to {portal.check_interval_minutes} minutes."
+            )
+
+        portal.save(update_fields=[
+            'last_checked_at', 'status', 'health_status', 'consecutive_failures',
+            'check_interval_minutes', 'poll_interval'
+        ])
         return
 
     # ── Success path ─────────────────────────────────────────────────────────
     portal.last_successful_check_at = timezone.now()
     portal.consecutive_failures = 0
+    portal.check_interval_minutes = 15
+    portal.poll_interval = 900
 
     if status_code in [403, 401]:
         portal.status = PortalStatus.BLOCKED
@@ -171,6 +179,7 @@ def portal_check(self, portal_id: int):
     # Persist all portal health fields in a single save call.
     portal.save(update_fields=[
         'last_checked_at', 'last_successful_check_at', 'consecutive_failures',
+        'check_interval_minutes', 'poll_interval',
         'status', 'health_status', 'last_change_detected_at',
         'uptime_percentage', 'response_time_ms',
     ])
@@ -194,17 +203,13 @@ def portal_check(self, portal_id: int):
 def check_high_priority_portals():
     """
     Fan out checks for HIGH priority portals (every 5 minutes).
-
-    Calls portal_check.apply_async() per portal rather than executing
-    synchronously so each portal gets its own task, its own timeout, and
-    its own retry budget.  A single slow Playwright scrape no longer blocks
-    the entire high-priority tier.
+    Filters out portals that are currently in exponential backoff and not yet due.
     """
     from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting high priority portals check...")
-    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.HIGH).values_list('id', flat=True)
+    portals = [p.id for p in Portal.objects.filter(is_active=True, priority=PortalPriority.HIGH) if p.is_due_for_check]
     count = len(portals)
-    logger.info(f"Found {count} active HIGH priority portals to check.")
+    logger.info(f"Found {count} active HIGH priority portals due to check.")
     for portal_id in portals:
         portal_check.apply_async(args=[portal_id], queue='crawl')
     logger.info(f"Queued {count} HIGH priority portal checks.")
@@ -213,16 +218,14 @@ def check_high_priority_portals():
 @shared_task(ignore_result=True)
 def check_standard_portals():
     """
-    Fan out checks for MEDIUM priority portals (every 20 minutes).
-
-    Calls portal_check.apply_async() per portal : see check_high_priority_portals
-    for the rationale.
+    Fan out checks for MEDIUM priority portals (every 15 minutes).
+    Filters out portals that are currently in exponential backoff and not yet due.
     """
     from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting standard portals check...")
-    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.MEDIUM).values_list('id', flat=True)
+    portals = [p.id for p in Portal.objects.filter(is_active=True, priority=PortalPriority.MEDIUM) if p.is_due_for_check]
     count = len(portals)
-    logger.info(f"Found {count} active MEDIUM priority portals to check.")
+    logger.info(f"Found {count} active MEDIUM priority portals due to check.")
     for portal_id in portals:
         portal_check.apply_async(args=[portal_id], queue='crawl')
     logger.info(f"Queued {count} MEDIUM priority portal checks.")
@@ -232,15 +235,13 @@ def check_standard_portals():
 def check_low_activity_portals():
     """
     Fan out checks for LOW priority portals (every 60 minutes).
-
-    Calls portal_check.apply_async() per portal : see check_high_priority_portals
-    for the rationale.
+    Filters out portals that are currently in exponential backoff and not yet due.
     """
     from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting low activity portals check...")
-    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.LOW).values_list('id', flat=True)
+    portals = [p.id for p in Portal.objects.filter(is_active=True, priority=PortalPriority.LOW) if p.is_due_for_check]
     count = len(portals)
-    logger.info(f"Found {count} active LOW priority portals to check.")
+    logger.info(f"Found {count} active LOW priority portals due to check.")
     for portal_id in portals:
         portal_check.apply_async(args=[portal_id], queue='crawl')
     logger.info(f"Queued {count} LOW priority portal checks.")

@@ -2225,6 +2225,8 @@ class CustomAdminSystemHealthView(APIView):
                 'name': portal.name,
                 'agency_acronym': portal.agency.acronym if portal.agency else '',
                 'url': portal.url,
+                'check_interval_minutes': portal.check_interval_minutes,
+                'poll_interval': portal.poll_interval,
                 'consecutive_failures': portal.consecutive_failures,
                 'last_checked_at': portal.last_checked_at.isoformat() if portal.last_checked_at else None,
                 'last_successful_check_at': portal.last_successful_check_at.isoformat() if portal.last_successful_check_at else None,
