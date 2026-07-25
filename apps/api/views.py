@@ -2607,6 +2607,52 @@ class CustomAdminPortalTriggerCheckAllView(APIView):
         })
 
 
+class CustomAdminPortalManualVerifyView(APIView):
+    """
+    POST /api/v1/admin/portals/{pk}/manual-verify/
+    Manually verify a portal (e.g. CAPTCHA-protected or firewalled portal).
+    Resets failure counter, sets health_status & status to ONLINE, restores 15-min interval,
+    updates last_successful_check_at timestamp, and records an operator verification note.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, pk):
+        from apps.agencies.models import Portal, HealthStatus, PortalStatus
+        try:
+            portal = Portal.objects.get(pk=pk)
+        except Portal.DoesNotExist:
+            return Response({'detail': 'Portal not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        now = timezone.now()
+        portal.consecutive_failures = 0
+        portal.check_interval_minutes = 15
+        portal.poll_interval = 900
+        portal.health_status = HealthStatus.ONLINE
+        portal.status = PortalStatus.ONLINE
+        portal.last_successful_check_at = now
+        portal.last_checked_at = now
+        portal.is_active = True
+
+        username = request.user.username if (request.user and hasattr(request.user, 'username')) else 'operator'
+        note_msg = f"Manually verified by {username} on {now.strftime('%Y-%m-%d %H:%M:%S UTC')}."
+        if note_msg not in (portal.notes or ""):
+            portal.notes = f"{portal.notes}\n{note_msg}".strip() if portal.notes else note_msg
+
+        portal.save(update_fields=[
+            'consecutive_failures', 'check_interval_minutes', 'poll_interval',
+            'health_status', 'status', 'last_successful_check_at', 'last_checked_at', 'is_active', 'notes'
+        ])
+
+        return Response({
+            'detail': f"Portal '{portal.name}' successfully marked as manually verified.",
+            'portal_id': portal.id,
+            'status': portal.status,
+            'health_status': portal.health_status,
+            'check_interval_minutes': portal.check_interval_minutes,
+            'last_successful_check_at': portal.last_successful_check_at.isoformat(),
+        })
+
+
 class VapidKeyView(APIView):
     """
     GET /api/v1/push/vapid-key/

@@ -152,15 +152,42 @@ def portal_check(self, portal_id: int):
     portal.check_interval_minutes = 15
     portal.poll_interval = 900
 
+    is_captcha_detected = (
+        "captcha" in content.lower() or
+        any(d in portal.url.lower() for d in ['finance.gov.ng', 'icpc.gov.ng', 'nafdac.gov.ng', 'nimasa.gov.ng'])
+    )
+
+    if is_captcha_detected:
+        portal.status = PortalStatus.CAPTCHA_PROTECTED
+        portal.health_status = HealthStatus.CAPTCHA_PROTECTED
+        portal.check_interval_minutes = 360
+        portal.poll_interval = 21600
+        logger.info(
+            f"Portal flagged as CAPTCHA PROTECTED: {portal.name} ({portal.url}). "
+            "Automated check frequency reduced to 6 hours."
+        )
+        portal.save(update_fields=[
+            'last_checked_at', 'status', 'health_status',
+            'check_interval_minutes', 'poll_interval'
+        ])
+        Snapshot.objects.create(
+            portal=portal,
+            content_hash=compute_content_hash(clean_html_to_text(content, content_type=content_type)),
+            raw_content=clean_html_to_text(content, content_type=content_type).replace('\x00', '') if content else '',
+            status_code=status_code,
+            response_time_ms=response_time_ms,
+            scrape_method_used=portal.scrape_method,
+            has_change=False,
+            triggered_alert=False
+        )
+        return
+
     if status_code == 429:
         portal.status = PortalStatus.RATE_LIMITED
         portal.health_status = HealthStatus.RATE_LIMITED
     elif status_code == 503:
         portal.status = PortalStatus.MAINTENANCE
         portal.health_status = HealthStatus.MAINTENANCE
-    elif "captcha" in content.lower():
-        portal.status = PortalStatus.CAPTCHA
-        portal.health_status = HealthStatus.CAPTCHA
     else:
         portal.status = PortalStatus.ONLINE
         portal.health_status = HealthStatus.ONLINE
@@ -316,23 +343,27 @@ def daily_health_report():
 
     agg = Snapshot.objects.filter(created_at__date=yesterday).aggregate(
         total=Count('id'),
-        failed=Count('id', filter=Q(status_code__gte=400)),
+        captcha=Count('id', filter=Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) | Q(portal__status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])),
+        failed=Count('id', filter=Q(status_code__gte=400) & ~Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])),
         network_errors=Count('id', filter=Q(status_code__isnull=True)),
         changes=Count('id', filter=Q(has_change=True)),
     )
     total_checks = agg['total'] or 0
+    captcha_checks = agg['captcha'] or 0
     failed_checks = agg['failed'] or 0
     network_errors = agg['network_errors'] or 0
-    successful_checks = total_checks - failed_checks - network_errors
+    effective_total = max(0, total_checks - captcha_checks)
+    successful_checks = max(0, effective_total - failed_checks - network_errors)
     changes_detected = agg['changes'] or 0
 
-    success_rate = (successful_checks / total_checks * 100) if total_checks > 0 else 100.0
+    success_rate = (successful_checks / effective_total * 100) if effective_total > 0 else 100.0
 
     report = (
         "<b>RecruitmentAlert Daily Health Report</b>\n\n"
         f"📅 Date: {yesterday.strftime('%d %B %Y')}\n"
         f"🔄 Total checks: {total_checks}\n"
         f"✅ Successful: {successful_checks}\n"
+        f"🛡️ CAPTCHA Protected: {captcha_checks}\n"
         f"❌ Failed (HTTP 4xx/5xx): {failed_checks}\n"
         f"🔌 Network errors: {network_errors}\n"
         f"📈 Success Rate: {success_rate:.2f}%\n"

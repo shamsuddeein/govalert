@@ -103,6 +103,7 @@ admin_patterns = [
     path('portals/trigger-check-all/', views.CustomAdminPortalTriggerCheckAllView.as_view(), name='admin_portal_trigger_check_all'),
     path('portals/<int:pk>/', views.CustomAdminPortalDetailView.as_view(), name='admin_portal_detail'),
     path('portals/<int:pk>/trigger-check/', views.CustomAdminPortalTriggerCheckView.as_view(), name='admin_portal_trigger_check'),
+    path('portals/<int:pk>/manual-verify/', views.CustomAdminPortalManualVerifyView.as_view(), name='admin_portal_manual_verify'),
     path('portals/<int:pk>/history/', views.CustomAdminPortalHistoryView.as_view(), name='admin_portal_history'),
 
     # User Management
