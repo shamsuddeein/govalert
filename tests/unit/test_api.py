@@ -7,6 +7,8 @@ from apps.alerts.models import Alert, AlertStatus, EventType
 
 @pytest.mark.django_db
 def test_agency_list_api():
+    from django.core.cache import cache
+    cache.clear()
     client = APIClient()
     Agency.objects.create(
         name="Nigeria Customs Service",

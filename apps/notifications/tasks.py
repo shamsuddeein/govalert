@@ -72,7 +72,7 @@ def dispatch_alert(alert_id: int):
     Deduplication is done with a single pre-fetch of already-notified user IDs
     before the send loop, avoiding one EXISTS query per user.
     """
-    from apps.alerts.models import Alert
+    from apps.alerts.models import Alert, AlertStatus
     from apps.accounts.models import TelegramUser, UserState
 
     logger.info(f"Starting dispatch for alert {alert_id}...")
@@ -80,6 +80,10 @@ def dispatch_alert(alert_id: int):
         alert = Alert.objects.select_related('agency', 'recruitment_event').get(pk=alert_id)
     except Alert.DoesNotExist:
         logger.error(f"Alert {alert_id} not found for dispatch.")
+        return
+
+    if alert.status != AlertStatus.APPROVED:
+        logger.warning(f"Alert {alert_id} is not APPROVED (status={alert.status}). Dispatch skipped.")
         return
 
     from apps.subscriptions.models import TelegramJobWatch
@@ -203,10 +207,11 @@ def dispatch_alert(alert_id: int):
 
     # Trigger Web Push API notification dispatch to all browser subscribers
     try:
+        ref_code = getattr(alert, 'ref', None) or alert.id
         dispatch_web_push_notification_task.delay(
             title=f"New Verified Opening: {alert.title[:45]}",
             body=f"{alert.agency.name} ({alert.agency.acronym}) — Verified recruitment update.",
-            url=f"/jobs/{alert.ref or alert.id}",
+            url=f"/jobs/{ref_code}",
         )
     except Exception as exc:
         logger.warning(f"Failed to queue Web Push notification task: {exc}")
