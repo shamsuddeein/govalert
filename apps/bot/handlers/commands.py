@@ -288,7 +288,36 @@ def handle_unsubscribe(message: dict):
     if not user:
         return
     unsubscribe_all(user)
-    send_message(chat_id=message['chat']['id'], text=UNSUBSCRIBED_MESSAGE)
+    send_message(chat_id=message['chat']['id'], text=UNSUBSCRIBED_MESSAGE, parse_mode='HTML')
+
+
+def handle_stop(message: dict):
+    """
+    NDPR /stop command — Performs complete hard deletion of all user alert subscriptions,
+    Telegram user records, and notification history for the requesting user ID.
+    Sends confirmation and logs deletion timestamp.
+    """
+    from apps.subscriptions.models import TelegramJobWatch, Subscription
+    from apps.notifications.models import Notification
+    from apps.accounts.models import TelegramUser
+    from apps.notifications.sender import send_message
+    from apps.bot.messages import UNSUBSCRIBED_MESSAGE
+    from django.utils import timezone
+
+    from_user = message.get('from', {})
+    telegram_id = from_user.get('id')
+    chat_id = message['chat']['id']
+
+    if telegram_id:
+        user = TelegramUser.objects.filter(telegram_id=telegram_id).first()
+        if user:
+            TelegramJobWatch.objects.filter(user=user).delete()
+            Subscription.objects.filter(user=user).delete()
+            Notification.objects.filter(user=user).delete()
+            user.delete()
+            logger.info("NDPR Deletion Executed: Permanently purged Telegram user ID %s at %s", telegram_id, timezone.now().isoformat())
+
+    send_message(chat_id=chat_id, text=UNSUBSCRIBED_MESSAGE, parse_mode='HTML')
 
 
 def format_agencies_message(agencies):

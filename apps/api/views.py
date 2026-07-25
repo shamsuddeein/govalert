@@ -2401,6 +2401,162 @@ class PushUnsubscribeView(APIView):
         })
 
 
+class DataSubjectExportView(APIView):
+    """
+    GET /api/v1/admin/data-subject-export/?identifier=user@example.com
+    NDPR / NDPA 2023 Data Subject Access Request (DSAR) export endpoint.
+    Returns complete database records held for an email address or Telegram user ID.
+    SLA: Must respond within 72 hours.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        from apps.accounts.models import TelegramUser, WebUser
+        from apps.subscriptions.models import KeywordSubscription, TelegramJobWatch, Subscription
+        from apps.notifications.models import Notification, PushSubscription
+        from django.contrib.auth.models import User
+        from django.db.models import Q
+
+        identifier = request.query_params.get('identifier', '').strip()
+        if not identifier:
+            return Response({'detail': 'Identifier query parameter (email or telegram_id) is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        export_data = {
+            'identifier': identifier,
+            'exported_at': timezone.now().isoformat(),
+            'web_user': None,
+            'telegram_user': None,
+            'keyword_subscriptions': [],
+            'push_subscriptions': [],
+            'notifications_count': 0,
+        }
+
+        # Query Web User / auth.User
+        user_obj = User.objects.filter(Q(email__iexact=identifier) | Q(username__iexact=identifier)).first()
+        if user_obj:
+            web_profile = WebUser.objects.filter(user=user_obj).first()
+            export_data['web_user'] = {
+                'id': user_obj.id,
+                'username': user_obj.username,
+                'email': user_obj.email,
+                'first_name': user_obj.first_name,
+                'last_name': user_obj.last_name,
+                'joined_at': user_obj.date_joined.isoformat(),
+                'phone': web_profile.phone if web_profile else '',
+                'categories_of_interest': web_profile.categories_of_interest if web_profile else [],
+            }
+
+        # Query Telegram User
+        tg_user = None
+        if identifier.isdigit():
+            tg_user = TelegramUser.objects.filter(telegram_id=int(identifier)).first()
+        if not tg_user:
+            tg_user = TelegramUser.objects.filter(username__iexact=identifier.lstrip('@')).first()
+
+        if tg_user:
+            export_data['telegram_user'] = {
+                'telegram_id': tg_user.telegram_id,
+                'username': tg_user.username,
+                'first_name': tg_user.first_name,
+                'last_name': tg_user.last_name,
+                'state': tg_user.state,
+                'receive_alerts': tg_user.receive_alerts,
+                'joined_at': tg_user.joined_at.isoformat(),
+            }
+
+        # Query Keyword Subscriptions
+        kw_subs = KeywordSubscription.objects.filter(email__iexact=identifier)
+        for kw in kw_subs:
+            export_data['keyword_subscriptions'].append({
+                'query_text': kw.query_text,
+                'created_at': kw.created_at.isoformat(),
+                'is_active': kw.is_active,
+            })
+
+        # Query Push Subscriptions
+        if user_obj and hasattr(user_obj, 'web_profile'):
+            push_subs = PushSubscription.objects.filter(user=user_obj.web_profile)
+            for ps in push_subs:
+                export_data['push_subscriptions'].append({
+                    'endpoint': ps.endpoint,
+                    'created_at': ps.created_at.isoformat(),
+                    'user_agent': ps.user_agent,
+                })
+
+        # Query Notification count
+        if tg_user:
+            export_data['notifications_count'] = Notification.objects.filter(user=tg_user).count()
+
+        return Response(export_data)
+
+
+class DataSubjectDeleteView(APIView):
+    """
+    POST /api/v1/admin/data-subject-delete/
+    NDPR / NDPA 2023 Right to Erasure (Right to be Forgotten) hard deletion endpoint.
+    Purges all personal records associated with an email address or Telegram user ID.
+    SLA: Must execute within 24 hours of request.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        from apps.accounts.models import TelegramUser, WebUser
+        from apps.subscriptions.models import KeywordSubscription, TelegramJobWatch, Subscription
+        from apps.notifications.models import Notification, PushSubscription
+        from django.contrib.auth.models import User
+        from django.db.models import Q
+
+        identifier = request.data.get('identifier', '').strip()
+        if not identifier:
+            return Response({'detail': 'Identifier (email or telegram_id) is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        purged_counts = {}
+
+        # 1. Delete WebUser / auth.User
+        user_obj = User.objects.filter(Q(email__iexact=identifier) | Q(username__iexact=identifier)).first()
+        if user_obj:
+            if hasattr(user_obj, 'web_profile'):
+                sub_count, _ = PushSubscription.objects.filter(user=user_obj.web_profile).delete()
+                purged_counts['push_subscriptions'] = sub_count
+                web_count, _ = WebUser.objects.filter(user=user_obj).delete()
+                purged_counts['web_user'] = web_count
+            u_count, _ = User.objects.filter(id=user_obj.id).delete()
+            purged_counts['auth_user'] = u_count
+
+        # 2. Delete TelegramUser
+        tg_user = None
+        if identifier.isdigit():
+            tg_user = TelegramUser.objects.filter(telegram_id=int(identifier)).first()
+        if not tg_user:
+            tg_user = TelegramUser.objects.filter(username__iexact=identifier.lstrip('@')).first()
+
+        if tg_user:
+            w_count, _ = TelegramJobWatch.objects.filter(user=tg_user).delete()
+            s_count, _ = Subscription.objects.filter(user=tg_user).delete()
+            n_count, _ = Notification.objects.filter(user=tg_user).delete()
+            t_count, _ = TelegramUser.objects.filter(telegram_id=tg_user.telegram_id).delete()
+            purged_counts.update({
+                'telegram_job_watches': w_count,
+                'telegram_subscriptions': s_count,
+                'notifications': n_count,
+                'telegram_user': t_count,
+            })
+
+        # 3. Delete Keyword Subscriptions
+        kw_count, _ = KeywordSubscription.objects.filter(email__iexact=identifier).delete()
+        purged_counts['keyword_subscriptions'] = kw_count
+
+        logger.info(f"NDPR Erasure Executed for identifier '{identifier}' at {timezone.now().isoformat()}: {purged_counts}")
+
+        return Response({
+            'status': 'deleted',
+            'detail': f"Successfully executed complete NDPR erasure for data subject '{identifier}'.",
+            'executed_at': timezone.now().isoformat(),
+            'purged_counts': purged_counts,
+        })
+
+
+
 
 
 

@@ -42,6 +42,20 @@ class UserFactory(DjangoModelFactory):
     is_superuser = False
 
 
+class StaffUserFactory(DjangoModelFactory):
+    class Meta:
+        model = User
+        django_get_or_create = ('username',)
+
+    username = factory.Sequence(lambda n: f"staff_{n}")
+    email = factory.Sequence(lambda n: f"staff{n}@example.com")
+    first_name = "Staff"
+    last_name = "Admin"
+    is_active = True
+    is_staff = True
+    is_superuser = False
+
+
 class WebUserFactory(DjangoModelFactory):
     class Meta:
         model = WebUser

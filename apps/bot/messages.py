@@ -6,23 +6,18 @@ Keeps message text out of handler logic for easy editing/translation.
 WELCOME_MESSAGE = """
 <b>Welcome to RecruitmentAlert, {name}.</b>
 
-This service will notify you as soon as any Nigerian government agency opens a new recruitment portal.
+This service notifies you instantly when Nigerian government agencies open recruitment portals.
 
-You are subscribed to receive alerts for over 30 agencies, including:
-- NNPC, NCS, EFCC, CBN, FIRS
-- NPF, NSCDC, DSS, NIS, NAF
-- NAFDAC, JAMB, FAAN, NCAA, and more
+You are set to receive verified alerts for monitored federal MDAs (NNPC, NCS, EFCC, Police, Immigration, FIRS, etc.).
 
-All openings are verified directly against official sources.
+<b>🔒 Privacy Notice (NDPR & NDPA 2023):</b>
+When you use this bot, we store your Telegram user ID to send you alerts. We do NOT share your data with anyone. Type <b>/stop</b> at any time to delete your data and unsubscribe. Read our Privacy Policy: https://www.recruitmentalert.com.ng/privacy
 
 <b>Commands:</b>
 /jobs - Latest openings
-/agencies - All monitored agencies
-/history - Your alert history
-/search - Search by keyword
-/status - Portal health status
-/settings - Your preferences
-/help - Full command list
+/agencies - Monitored agency statuses
+/stop - Delete data & unsubscribe
+/help - Command list
 """
 
 RETURNING_MESSAGE = """
@@ -33,45 +28,39 @@ Your subscriptions are active. You will receive notifications as soon as new job
 <b>Quick Commands:</b>
 /jobs - View latest jobs
 /status - Check portal statuses
-/settings - Manage your preferences
+/stop - Delete data & unsubscribe
 """
 
 CONSENT_MESSAGE = """
 <b>Data Privacy Notice</b>
 
-To provide this service, RecruitmentAlert stores the following information:
-- Your Telegram ID and name
-- Your subscription preferences
+To provide this service, RecruitmentAlert stores your Telegram ID, name, and subscription preferences.
 
-This is handled in accordance with the Nigeria Data Protection Regulation (NDPR).
+This data is processed in accordance with the Nigeria Data Protection Regulation (NDPR) and NDPA 2023.
 
-Your data will not be shared with third parties. You can delete your profile and subscriptions at any time using the /delete command.
-
-Select 'I Agree' to proceed.
+Your data will never be sold or shared. You can delete your profile and subscriptions instantly at any time using the <b>/stop</b> command.
 """
 
 HELP_MESSAGE = """
-<b>RecruitmentAlert - Command List</b>
+<b>RecruitmentAlert — Command List</b>
 
-/start - Register and subscribe to all agencies
-/jobs - Latest 10 job openings
-/latest - Most recent alert
-/agencies - All monitored agencies and portal status
-/history - Your last 20 received alerts
-/search [keyword] - Search alerts by keyword
-/status - Portal health summary
-/settings - Your notification preferences
-/unsubscribe - Stop receiving alerts
-/report - Report a suspicious alert
+/start - Register & activate alerts
+/jobs - View latest verified job openings
+/agencies - Monitored agencies & portal health
+/status - System status summary
+/stop - Delete your data & unsubscribe
 /help - Show this message
 
-RecruitmentAlert monitors official Nigerian government agency portals for updates.
+<b>Data Rights:</b>
+Type /stop anytime to delete all your personal data from our database instantly. Privacy Policy: https://www.recruitmentalert.com.ng/privacy
 """
 
 UNSUBSCRIBED_MESSAGE = """
 <b>You have been unsubscribed.</b>
 
-You will no longer receive recruitment alerts. To re-subscribe, send the /start command.
+Your Telegram alert preferences and profile data have been permanently deleted from our database in compliance with NDPR. You will no longer receive alerts.
+
+To re-subscribe at any time, send /start.
 """
 
 ERROR_MESSAGE = "An error occurred. Please try again or type /help."

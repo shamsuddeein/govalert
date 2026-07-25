@@ -254,6 +254,30 @@ VAPID_PUBLIC_KEY = config('VAPID_PUBLIC_KEY', default='BEl62iUYgUivxIkv69yViEuiB
 VAPID_PRIVATE_KEY = config('VAPID_PRIVATE_KEY', default='x1y2z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S')
 VAPID_ADMIN_EMAIL = config('VAPID_ADMIN_EMAIL', default='mailto:admin@recruitmentalert.com.ng')
 
+def _strip_pii_from_sentry_event(event, hint):
+    """NDPR/NDPA PII Scrubber for Sentry Error Tracking."""
+    import re
+    if 'request' in event:
+        headers = event['request'].get('headers', {})
+        for h in ['Authorization', 'Cookie', 'X-Api-Key']:
+            if h in headers:
+                headers[h] = '[SCRUBBED_PII]'
+
+    def _scrub_val(val):
+        if isinstance(val, str):
+            val = re.sub(r'[\w\.-]+@[\w\.-]+\.\w+', '[SCRUBBED_EMAIL]', val)
+            val = re.sub(r'\+?234\d{10}', '[SCRUBBED_PHONE]', val)
+        elif isinstance(val, dict):
+            return {k: _scrub_val(v) for k, v in val.items()}
+        elif isinstance(val, list):
+            return [_scrub_val(v) for v in val]
+        return val
+
+    if 'extra' in event:
+        event['extra'] = _scrub_val(event['extra'])
+    return event
+
+
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
@@ -271,6 +295,7 @@ if SENTRY_DSN:
         traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.2 if DEBUG else 0.05, cast=float),
         profiles_sample_rate=config('SENTRY_PROFILES_SAMPLE_RATE', default=0.1, cast=float),
         send_default_pii=False,
+        before_send=_strip_pii_from_sentry_event,
     )
 
 # ─── Telegram Bot ──────────────────────────────────────────────────────────────

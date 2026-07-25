@@ -109,6 +109,10 @@ admin_patterns = [
     path('system-health/', views.CustomAdminSystemHealthView.as_view(), name='admin_system_health'),
     path('broadcast/', views.AdminBroadcastView.as_view(), name='admin_broadcast'),
     path('stats/', views.AdminStatsView.as_view(), name='admin_stats'),
+
+    # NDPR & NDPA 2023 Data Subject Rights (DSAR)
+    path('data-subject-export/', views.DataSubjectExportView.as_view(), name='admin_data_subject_export'),
+    path('data-subject-delete/', views.DataSubjectDeleteView.as_view(), name='admin_data_subject_delete'),
 ]
 
 urlpatterns = [

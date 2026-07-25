@@ -235,3 +235,34 @@ def dispatch_web_push_notification_task(title: str, body: str, url: str = '/jobs
         logger.error(f"Error in web push broadcast task: {exc}", exc_info=True)
         return None
 
+
+@shared_task(ignore_result=True)
+def clean_expired_personal_data_task():
+    """
+    Daily Celery periodic task to enforce NDPR/NDPA data retention rules:
+    - Purges inactive KeywordSubscriptions older than 30 days.
+    - Purges inactive PushSubscriptions older than 30 days.
+    - Purges Notification delivery logs older than 90 days.
+    - Purges inactive TelegramUser accounts older than 30 days.
+    """
+    from datetime import timedelta
+    from apps.subscriptions.models import KeywordSubscription
+    from apps.notifications.models import Notification, PushSubscription
+    from apps.accounts.models import TelegramUser, UserState
+
+    now = timezone.now()
+    cutoff_30d = now - timedelta(days=30)
+    cutoff_90d = now - timedelta(days=90)
+
+    kw_count, _ = KeywordSubscription.objects.filter(is_active=False, created_at__lt=cutoff_30d).delete()
+    push_count, _ = PushSubscription.objects.filter(is_active=False, updated_at__lt=cutoff_30d).delete()
+    notif_count, _ = Notification.objects.filter(queued_at__lt=cutoff_90d).delete()
+    tg_count, _ = TelegramUser.objects.filter(state=UserState.INACTIVE, last_active_at__lt=cutoff_30d).delete()
+
+    logger.info(
+        f"NDPR Periodic Retention Cleanup Completed: "
+        f"{kw_count} inactive keyword subs, {push_count} inactive push subs, "
+        f"{notif_count} old notifications (>90d), {tg_count} inactive Telegram users purged."
+    )
+
+

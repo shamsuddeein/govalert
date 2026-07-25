@@ -57,7 +57,7 @@ def _handle_message(message: dict) -> None:
     command = text.split()[0].lower().split('@')[0]  # Strip bot username suffix
 
     from apps.bot.handlers.commands import (
-        handle_start, handle_help, handle_unsubscribe,
+        handle_start, handle_help, handle_unsubscribe, handle_stop,
         handle_agencies, handle_jobs, handle_history,
         handle_status, handle_settings, handle_search,
         handle_latest, handle_report, handle_allalerts,
@@ -68,7 +68,8 @@ def _handle_message(message: dict) -> None:
     handlers = {
         '/start': handle_start,
         '/help': handle_help,
-        '/unsubscribe': handle_unsubscribe,
+        '/stop': handle_stop,
+        '/unsubscribe': handle_stop,
         '/agencies': handle_agencies,
         '/jobs': handle_jobs,
         '/history': handle_history,
