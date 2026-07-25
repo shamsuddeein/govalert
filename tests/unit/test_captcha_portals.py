@@ -126,6 +126,6 @@ def test_daily_health_report_separates_captcha_protected(mock_send_message):
     mock_send_message.assert_called_once()
     report_text = mock_send_message.call_args[1]['text']
 
-    # Must contain separate CAPTCHA Protected metric line and 100% success rate
-    assert "🛡️ CAPTCHA Protected: 1" in report_text
-    assert "📈 Success Rate: 100.00%" in report_text
+    # Must contain separate CAPTCHA Blocked metric line and 100% genuine success rate
+    assert "🛡️ CAPTCHA Blocked: 1" in report_text
+    assert "Genuine Success Rate: 100.00%" in report_text
