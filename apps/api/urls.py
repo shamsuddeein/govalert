@@ -55,9 +55,10 @@ public_patterns = [
     path('me/saved-jobs/', views.SavedJobsView.as_view(), name='saved_jobs'),
     path('me/saved-jobs/<str:ref>/', views.SavedJobDetailView.as_view(), name='saved_job_detail'),
 
-    # System Status
+    # System Status & Audit Log
     path('status/', views.SystemStatusView.as_view(), name='system_status'),
     path('status/live-feed/', views.LiveFeedView.as_view(), name='live_feed'),
+    path('audit-log/', views.PublicAuditLogView.as_view(), name='public_audit_log'),
 
     # Health
     path('health/', views.HealthView.as_view(), name='health'),

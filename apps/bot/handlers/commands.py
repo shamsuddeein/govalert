@@ -520,3 +520,19 @@ def handle_report(message: dict):
         text="To report a fake alert, tap the <b>[Report Fake]</b> button directly on the alert message.",
         parse_mode='HTML',
     )
+
+
+def handle_verify(message: dict):
+    """
+    /verify — Returns bot verification notice, founder details, and official site URL.
+    """
+    from apps.notifications.sender import send_message
+    chat_id = message['chat']['id']
+    text = (
+        "🛡️ <b>RecruitmentAlert Bot Verification</b>\n\n"
+        "• <b>Official Bot Username:</b> @govalerts_bot\n"
+        "• <b>Official Website:</b> https://www.recruitmentalert.com.ng\n"
+        "• <b>Founder:</b> Shamsuddeen Yusuf (Kaduna, Nigeria)\n\n"
+        "✅ <i>This is the only official RecruitmentAlert bot — verify at recruitmentalert.com.ng before trusting any other account.</i>"
+    )
+    send_message(chat_id=chat_id, text=text, parse_mode='HTML')

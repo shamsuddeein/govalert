@@ -61,13 +61,14 @@ def _handle_message(message: dict) -> None:
         handle_agencies, handle_jobs, handle_history,
         handle_status, handle_settings, handle_search,
         handle_latest, handle_report, handle_allalerts,
-        handle_mybookmarks, handle_unwatch,
+        handle_mybookmarks, handle_unwatch, handle_verify,
     )
     from apps.bot.handlers.admin import handle_admin, handle_broadcast, handle_stats
 
     handlers = {
         '/start': handle_start,
         '/help': handle_help,
+        '/verify': handle_verify,
         '/stop': handle_stop,
         '/unsubscribe': handle_stop,
         '/agencies': handle_agencies,
