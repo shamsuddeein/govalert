@@ -76,7 +76,7 @@ def _http_get_with_impersonation(url: str, headers: dict, timeout: int = 30):
         return response
 
 
-def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
+def scrape_portal(url: str, method: str = 'HTTP', is_blocked: bool = False, custom_headers: dict = None) -> tuple[str, int, int]:
     """
     Fetch content from a portal URL using HTTP (with TLS browser impersonation),
     Playwright, or PDF parsing.
@@ -85,20 +85,34 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
     Every outbound request passes through the SSRF guard in
     _http_get_with_impersonation before any network I/O occurs.
     """
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(url)
+    domain_referer = f"{parsed.scheme}://{parsed.netloc}/" if (parsed.scheme and parsed.netloc) else url
+
     headers = {
-        'User-Agent': random.choice(USER_AGENTS),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Referer': domain_referer,
         'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
         'Sec-Ch-Ua-Mobile': '?0',
         'Sec-Ch-Ua-Platform': '"Windows"',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Site': 'same-origin',
         'Sec-Fetch-User': '?1',
         'Upgrade-Insecure-Requests': '1',
     }
+    if custom_headers:
+        headers.update(custom_headers)
+
+    if is_blocked:
+        delay = random.uniform(3.0, 8.0)
+        logger.info(f"Applying randomized delay of {delay:.2f}s before scraping firewalled portal: {url}")
+        time.sleep(delay)
 
     start_time = time.time()
 

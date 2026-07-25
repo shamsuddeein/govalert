@@ -41,6 +41,7 @@ class HealthStatus(models.TextChoices):
     RATE_LIMITED = 'RATE_LIMITED', 'Rate Limited'
     MAINTENANCE = 'MAINTENANCE', 'Under Maintenance'
     DEGRADED = 'DEGRADED', 'Degraded'
+    MANUAL_MONITORING_REQUIRED = 'MANUAL_MONITORING_REQUIRED', 'Manual Monitoring Required'
     UNKNOWN = 'UNKNOWN', 'Unknown'
 
 
@@ -53,6 +54,7 @@ class PortalStatus(models.TextChoices):
     CHANGED_LAYOUT = 'CHANGED_LAYOUT', 'Changed Layout'
     RATE_LIMITED = 'RATE_LIMITED', 'Rate Limited'
     DEGRADED = 'DEGRADED', 'Degraded'
+    MANUAL_MONITORING_REQUIRED = 'MANUAL_MONITORING_REQUIRED', 'Manual Monitoring Required'
     UNKNOWN = 'UNKNOWN', 'Unknown'
     UP = 'UP', 'Up (Deprecated)'
     DOWN = 'DOWN', 'Down (Deprecated)'

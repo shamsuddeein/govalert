@@ -54,11 +54,28 @@ def portal_check(self, portal_id: int):
 
     logger.info(f"Checking portal: {portal.name} ({portal.url}) using {portal.scrape_method}...")
 
+    is_firewall_blocked = (
+        portal.health_status == HealthStatus.BLOCKED or
+        portal.status == PortalStatus.BLOCKED or
+        'joinnigeriannavy.com' in portal.url.lower() or
+        'fedcivilservice.gov.ng' in portal.url.lower()
+    )
+
     from core.plugins import get_scraper_backend
 
     try:
         scraper = get_scraper_backend(portal.scrape_method)
-        content, status_code, response_time_ms = scraper.scrape(portal.url)
+        if hasattr(scraper, 'scrape'):
+            import inspect
+            sig = inspect.signature(scraper.scrape)
+            if 'is_blocked' in sig.parameters:
+                content, status_code, response_time_ms = scraper.scrape(portal.url, is_blocked=is_firewall_blocked)
+            else:
+                content, status_code, response_time_ms = scraper.scrape(portal.url)
+        else:
+            from apps.monitor.scraper import scrape_portal as raw_scrape_portal
+            content, status_code, response_time_ms = raw_scrape_portal(portal.url, method=portal.scrape_method, is_blocked=is_firewall_blocked)
+
         content = content.replace('\x00', '') if content else ''
         content_type = getattr(scraper, 'last_content_type', '')
         success = True
@@ -69,12 +86,39 @@ def portal_check(self, portal_id: int):
         logger.warning(f"Scraper failed for {portal.url}: {e}")
         content = ""
         content_type = ""
-        status_code = 500
+        status_code = 403 if "403" in str(e) else 500
         response_time_ms = 0
         success = False
 
     # ── Update portal health ─────────────────────────────────────────────────
     portal.last_checked_at = timezone.now()
+
+    # Handle HTTP 403 Forbidden / Cloudflare firewall block
+    if status_code in [403, 401]:
+        # Do NOT count FIREWALL BLOCKED status toward consecutive_failures
+        if is_firewall_blocked:
+            # Persistent 403 after spoofing: transition to MANUAL_MONITORING_REQUIRED
+            portal.status = PortalStatus.MANUAL_MONITORING_REQUIRED
+            portal.health_status = HealthStatus.MANUAL_MONITORING_REQUIRED
+            portal.is_active = False  # Stop automated checks entirely
+            note_msg = "MANUAL MONITORING REQUIRED: Blocked by Cloudflare/Firewall (HTTP 403). Operator must check this portal manually once per week."
+            if note_msg not in (portal.notes or ""):
+                portal.notes = f"{portal.notes}\n{note_msg}".strip() if portal.notes else note_msg
+            logger.warning(
+                f"Portal marked as MANUAL MONITORING REQUIRED (HTTP 403 persistent block): "
+                f"{portal.name} ({portal.url}). Deactivated automated checks."
+            )
+        else:
+            # First-time 403: flag as BLOCKED for next check header spoofing
+            portal.status = PortalStatus.BLOCKED
+            portal.health_status = HealthStatus.BLOCKED
+            logger.warning(
+                f"Portal flagged as BLOCKED (HTTP 403): {portal.name} ({portal.url}). "
+                "Next check will use browser header spoofing and randomized delay."
+            )
+
+        portal.save(update_fields=['last_checked_at', 'status', 'health_status', 'is_active', 'notes'])
+        return
 
     if not success:
         portal.consecutive_failures += 1
@@ -108,10 +152,7 @@ def portal_check(self, portal_id: int):
     portal.check_interval_minutes = 15
     portal.poll_interval = 900
 
-    if status_code in [403, 401]:
-        portal.status = PortalStatus.BLOCKED
-        portal.health_status = HealthStatus.BLOCKED
-    elif status_code == 429:
+    if status_code == 429:
         portal.status = PortalStatus.RATE_LIMITED
         portal.health_status = HealthStatus.RATE_LIMITED
     elif status_code == 503:

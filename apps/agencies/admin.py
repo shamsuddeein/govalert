@@ -23,6 +23,9 @@ class PortalAdmin(admin.ModelAdmin):
 
     @admin.display(description='Check Interval')
     def current_check_interval(self, obj):
+        from apps.agencies.models import HealthStatus, PortalStatus
+        if obj.health_status == HealthStatus.MANUAL_MONITORING_REQUIRED or obj.status == PortalStatus.MANUAL_MONITORING_REQUIRED:
+            return "Manual (Weekly)"
         mins = obj.check_interval_minutes
         if mins >= 60:
             hrs = mins // 60
