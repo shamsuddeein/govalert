@@ -21,6 +21,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 # Django admin URL path — keep secret, do not use 'admin/'.
 # Set to a UUID or random string in production. Empty = admin disabled.
 ADMIN_URL = config('ADMIN_URL', default='admin')
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 
 
 # ─── Applications ──────────────────────────────────────────────────────────────
