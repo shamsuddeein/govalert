@@ -335,3 +335,28 @@ class AlertAction(models.Model):
 
     def __str__(self):
         return f"{self.user.display_name} {self.action_type} → Alert #{self.alert_id}"
+
+
+class BlogPost(models.Model):
+    """
+    Public and admin-managed educational blog post / scam prevention guide.
+    """
+    title = models.CharField(max_length=250)
+    slug = models.SlugField(max_length=250, unique=True)
+    excerpt = models.TextField(blank=True, default='')
+    content = models.TextField(help_text="Markdown format content.")
+    category = models.CharField(max_length=100, default='Scam Prevention')
+    author = models.CharField(max_length=100, default='Shamsuddeen Yusuf')
+    read_time = models.CharField(max_length=50, default='5 min read')
+    is_published = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'blog_posts'
+        ordering = ['-created_at']
+        verbose_name = 'Blog Post'
+        verbose_name_plural = 'Blog Posts'
+
+    def __str__(self):
+        return self.title

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from apps.alerts.models import Alert, AlertAction
+from apps.alerts.models import Alert, AlertAction, BlogPost
 
 
 @admin.register(Alert)
@@ -17,3 +17,13 @@ class AlertActionAdmin(admin.ModelAdmin):
     list_filter = ('action_type',)
     search_fields = ('user__first_name', 'user__username', 'alert__title')
     ordering = ('-created_at',)
+
+
+@admin.register(BlogPost)
+class BlogPostAdmin(admin.ModelAdmin):
+    list_display = ('title', 'slug', 'category', 'author', 'is_published', 'created_at')
+    list_filter = ('is_published', 'category')
+    search_fields = ('title', 'content', 'excerpt')
+    prepopulated_fields = {'slug': ('title',)}
+    ordering = ('-created_at',)
+

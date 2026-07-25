@@ -676,6 +676,208 @@ class PublicAuditLogView(APIView):
         })
 
 
+# ─── Blog Endpoints ───────────────────────────────────────────────────────────
+
+class PublicBlogPostListView(APIView):
+    """
+    GET /api/v1/blog/
+    Public published blog posts list.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from apps.alerts.models import BlogPost
+        posts = BlogPost.objects.filter(is_published=True).order_by('-created_at')
+        results = [
+            {
+                'id': p.pk,
+                'title': p.title,
+                'slug': p.slug,
+                'excerpt': p.excerpt,
+                'content': p.content,
+                'category': p.category,
+                'author': p.author,
+                'read_time': p.read_time,
+                'created_at': p.created_at.isoformat(),
+            }
+            for p in posts
+        ]
+        return Response({'results': results, 'count': len(results)})
+
+
+class PublicBlogPostDetailView(APIView):
+    """
+    GET /api/v1/blog/<slug>/
+    Public single blog post detail.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug):
+        from apps.alerts.models import BlogPost
+        try:
+            p = BlogPost.objects.get(slug=slug, is_published=True)
+            return Response({
+                'id': p.pk,
+                'title': p.title,
+                'slug': p.slug,
+                'excerpt': p.excerpt,
+                'content': p.content,
+                'category': p.category,
+                'author': p.author,
+                'read_time': p.read_time,
+                'created_at': p.created_at.isoformat(),
+            })
+        except BlogPost.DoesNotExist:
+            return Response({'detail': 'Article not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+
+class AdminBlogPostListCreateView(APIView):
+    """
+    GET  /api/v1/admin/blog/  -> List all blog posts (admin view)
+    POST /api/v1/admin/blog/  -> Create new blog post
+    """
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        from apps.alerts.models import BlogPost
+        posts = BlogPost.objects.all().order_by('-created_at')
+        results = [
+            {
+                'id': p.pk,
+                'title': p.title,
+                'slug': p.slug,
+                'excerpt': p.excerpt,
+                'content': p.content,
+                'category': p.category,
+                'author': p.author,
+                'read_time': p.read_time,
+                'is_published': p.is_published,
+                'created_at': p.created_at.isoformat(),
+                'updated_at': p.updated_at.isoformat(),
+            }
+            for p in posts
+        ]
+        return Response({'results': results, 'count': len(results)})
+
+    def post(self, request):
+        from apps.alerts.models import BlogPost
+        from django.utils.text import slugify
+
+        data = request.data
+        title = data.get('title', '').strip()
+        if not title:
+            return Response({'detail': 'Title is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        slug = data.get('slug', '').strip() or slugify(title)
+        content = data.get('content', '').strip()
+        excerpt = data.get('excerpt', '').strip()
+        category = data.get('category', 'Scam Prevention').strip()
+        author = data.get('author', 'Shamsuddeen Yusuf').strip()
+        read_time = data.get('read_time', '5 min read').strip()
+        is_published = bool(data.get('is_published', True))
+
+        post = BlogPost.objects.create(
+            title=title,
+            slug=slug,
+            excerpt=excerpt,
+            content=content,
+            category=category,
+            author=author,
+            read_time=read_time,
+            is_published=is_published,
+        )
+
+        return Response({
+            'id': post.pk,
+            'title': post.title,
+            'slug': post.slug,
+            'excerpt': post.excerpt,
+            'content': post.content,
+            'category': post.category,
+            'author': post.author,
+            'read_time': post.read_time,
+            'is_published': post.is_published,
+            'created_at': post.created_at.isoformat(),
+        }, status=http_status.HTTP_201_CREATED)
+
+
+class AdminBlogPostDetailView(APIView):
+    """
+    GET    /api/v1/admin/blog/<int:pk>/ -> Detail view
+    PUT    /api/v1/admin/blog/<int:pk>/ -> Update blog post
+    DELETE /api/v1/admin/blog/<int:pk>/ -> Delete blog post
+    """
+    permission_classes = [IsAdminUser]
+
+    def _get_object(self, pk):
+        from apps.alerts.models import BlogPost
+        try:
+            return BlogPost.objects.get(pk=pk)
+        except BlogPost.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        post = self._get_object(pk)
+        if not post:
+            return Response({'detail': 'Blog post not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        return Response({
+            'id': post.pk,
+            'title': post.title,
+            'slug': post.slug,
+            'excerpt': post.excerpt,
+            'content': post.content,
+            'category': post.category,
+            'author': post.author,
+            'read_time': post.read_time,
+            'is_published': post.is_published,
+            'created_at': post.created_at.isoformat(),
+        })
+
+    def put(self, request, pk):
+        post = self._get_object(pk)
+        if not post:
+            return Response({'detail': 'Blog post not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        if 'title' in data:
+            post.title = data['title'].strip()
+        if 'slug' in data:
+            post.slug = data['slug'].strip()
+        if 'excerpt' in data:
+            post.excerpt = data['excerpt'].strip()
+        if 'content' in data:
+            post.content = data['content'].strip()
+        if 'category' in data:
+            post.category = data['category'].strip()
+        if 'author' in data:
+            post.author = data['author'].strip()
+        if 'read_time' in data:
+            post.read_time = data['read_time'].strip()
+        if 'is_published' in data:
+            post.is_published = bool(data['is_published'])
+
+        post.save()
+        return Response({
+            'id': post.pk,
+            'title': post.title,
+            'slug': post.slug,
+            'excerpt': post.excerpt,
+            'content': post.content,
+            'category': post.category,
+            'author': post.author,
+            'read_time': post.read_time,
+            'is_published': post.is_published,
+            'created_at': post.created_at.isoformat(),
+        })
+
+    def delete(self, request, pk):
+        post = self._get_object(pk)
+        if not post:
+            return Response({'detail': 'Blog post not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+        post.delete()
+        return Response({'detail': 'Blog post deleted.'}, status=http_status.HTTP_204_NO_CONTENT)
+
+
 # ─── Health Endpoint ───────────────────────────────────────────────────────────
 
 class HealthView(APIView):

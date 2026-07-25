@@ -60,6 +60,10 @@ public_patterns = [
     path('status/live-feed/', views.LiveFeedView.as_view(), name='live_feed'),
     path('audit-log/', views.PublicAuditLogView.as_view(), name='public_audit_log'),
 
+    # Blog
+    path('blog/', views.PublicBlogPostListView.as_view(), name='public_blog_list'),
+    path('blog/<slug:slug>/', views.PublicBlogPostDetailView.as_view(), name='public_blog_detail'),
+
     # Health
     path('health/', views.HealthView.as_view(), name='health'),
 
@@ -110,6 +114,10 @@ admin_patterns = [
     path('system-health/', views.CustomAdminSystemHealthView.as_view(), name='admin_system_health'),
     path('broadcast/', views.AdminBroadcastView.as_view(), name='admin_broadcast'),
     path('stats/', views.AdminStatsView.as_view(), name='admin_stats'),
+
+    # Blog Management
+    path('blog/', views.AdminBlogPostListCreateView.as_view(), name='admin_blog_list_create'),
+    path('blog/<int:pk>/', views.AdminBlogPostDetailView.as_view(), name='admin_blog_detail'),
 
     # NDPR & NDPA 2023 Data Subject Rights (DSAR)
     path('data-subject-export/', views.DataSubjectExportView.as_view(), name='admin_data_subject_export'),
