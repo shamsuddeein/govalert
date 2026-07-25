@@ -4,7 +4,7 @@ djangorestframework==3.15.2
 djangorestframework-simplejwt==5.5.0
 django-cors-headers==4.4.0
 
-# ─── Scheduler (Phase 1 — no Redis/Celery needed) ──────────────────────────────
+# ─── Scheduler (Phase 1 : no Redis/Celery needed) ──────────────────────────────
 APScheduler==3.10.4
 django-apscheduler==0.7.0
 
@@ -21,7 +21,7 @@ playwright==1.44.0
 # ─── PDF Parsing ───────────────────────────────────────────────────────────────
 pdfplumber==0.11.0
 
-# ─── AI Integration (Gemini — free tier) ───────────────────────────────────────
+# ─── AI Integration (Gemini : free tier) ───────────────────────────────────────
 google-generativeai==0.7.2
 
 # ─── Utilities ─────────────────────────────────────────────────────────────────

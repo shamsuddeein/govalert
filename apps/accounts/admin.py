@@ -50,7 +50,7 @@ class TelegramUserAdmin(admin.ModelAdmin):
     def username_display(self, obj):
         if obj.username:
             return format_html('<a href="https://t.me/{0}" target="_blank">@{0}</a>', obj.username)
-        return '—'
+        return ':'
 
     @admin.display(description='State')
     def state_badge(self, obj):

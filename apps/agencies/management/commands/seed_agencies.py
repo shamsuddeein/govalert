@@ -1,5 +1,5 @@
 """
-seed_agencies — Idempotently seeds all 41 monitored Nigerian government agencies.
+seed_agencies : Idempotently seeds all 41 monitored Nigerian government agencies.
 
 Usage:
     python manage.py seed_agencies
@@ -444,7 +444,7 @@ class Command(BaseCommand):
 
         dry_run = options['dry_run']
         if dry_run:
-            self.stdout.write(self.style.WARNING('DRY RUN — no changes will be written.\n'))
+            self.stdout.write(self.style.WARNING('DRY RUN : no changes will be written.\n'))
 
         created_count = 0
         updated_count = 0
@@ -457,7 +457,7 @@ class Command(BaseCommand):
             if dry_run:
                 exists = Agency.objects.filter(acronym=acronym).exists()
                 action = 'EXISTS' if exists else 'CREATE'
-                self.stdout.write(f'  [{action}] {acronym} — {name}')
+                self.stdout.write(f'  [{action}] {acronym} : {name}')
                 continue
 
             agency = Agency.objects.filter(Q(acronym__iexact=acronym) | Q(name__iexact=name)).first()
@@ -487,10 +487,10 @@ class Command(BaseCommand):
 
             if not created:
                 updated_count += 1
-                self.stdout.write(f'  [UPDATED] {agency.acronym} — {name}')
+                self.stdout.write(f'  [UPDATED] {agency.acronym} : {name}')
             else:
                 created_count += 1
-                self.stdout.write(self.style.SUCCESS(f'  [CREATED] {acronym} — {name}'))
+                self.stdout.write(self.style.SUCCESS(f'  [CREATED] {acronym} : {name}'))
 
             # Create default portal if none exists for this URL
             portal_url = data['portal_url']

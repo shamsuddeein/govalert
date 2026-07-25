@@ -1,5 +1,5 @@
 """
-GovAlert API v1 — Serializers for agencies, jobs (alerts), and system status.
+GovAlert API v1 : Serializers for agencies, jobs (alerts), and system status.
 """
 from django.utils import timezone
 from rest_framework import serializers

@@ -61,7 +61,7 @@ def retry_failed_notifications():
 
 @shared_task(
     ignore_result=True,
-    soft_time_limit=600,   # 10 min soft limit — fan-out to large subscriber base
+    soft_time_limit=600,   # 10 min soft limit : fan-out to large subscriber base
     time_limit=700,        # 11.7 min hard limit
 )
 def dispatch_alert(alert_id: int):
@@ -173,7 +173,7 @@ def dispatch_alert(alert_id: int):
     failure_count = 0
 
     for user in users:
-        # O(1) set lookup — no DB hit per user.
+        # O(1) set lookup : no DB hit per user.
         if user.pk in already_sent_user_ids:
             continue
 
@@ -210,7 +210,7 @@ def dispatch_alert(alert_id: int):
         ref_code = getattr(alert, 'ref', None) or alert.id
         dispatch_web_push_notification_task.delay(
             title=f"New Verified Opening: {alert.title[:45]}",
-            body=f"{alert.agency.name} ({alert.agency.acronym}) — Verified recruitment update.",
+            body=f"{alert.agency.name} ({alert.agency.acronym}) : Verified recruitment update.",
             url=f"/jobs/{ref_code}",
         )
     except Exception as exc:

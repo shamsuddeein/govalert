@@ -1,5 +1,5 @@
 """
-Notification Model — tracks Telegram message delivery.
+Notification Model : tracks Telegram message delivery.
 """
 from django.db import models
 from django.utils import timezone

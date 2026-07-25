@@ -149,7 +149,7 @@ def match_keyword_subscriptions_for_alert(alert) -> int:
                 f"Agency: {agency_name} ({agency_acronym})\n"
                 f"Deadline: {deadline_str}\n"
                 f"View details: {job_url}\n\n"
-                f"— RecruitmentAlert Intelligence Team\n"
+                f": RecruitmentAlert Intelligence Team\n"
             )
             try:
                 send_mail(
@@ -261,7 +261,7 @@ def dispatch_web_user_emails(alert) -> int:
             f"Positions: {positions_str}\n"
             f"Deadline: {deadline_str}\n\n"
             f"View official details and apply: {job_url}\n\n"
-            f"— RecruitmentAlert Intelligence Team\n"
+            f": RecruitmentAlert Intelligence Team\n"
             f"https://www.recruitmentalert.com.ng\n"
         )
         try:

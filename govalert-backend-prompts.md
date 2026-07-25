@@ -1,4 +1,4 @@
-# GovAlert — Backend API Prompts (Model-Accurate)
+# GovAlert : Backend API Prompts (Model-Accurate)
 **These replace Prompts 7–12 from govalert-prompts.md**
 **Use your actual model names and field names exactly as written here.**
 
@@ -43,7 +43,7 @@ still being verified. REJECTED means it was fake. Never expose those.
 
 ---
 
-## PROMPT B1 — Agencies list and detail endpoints
+## PROMPT B1 : Agencies list and detail endpoints
 
 ```
 Using Django REST Framework, build two endpoints for agencies.
@@ -82,7 +82,7 @@ Add these computed fields (SerializerMethodField):
   - jobs_available: count Alert.objects.filter(
     agency=instance, status='APPROVED', is_verified=True) only count
     alerts where the deadline has not passed (or deadline is not a valid
-    date — include those since we cannot know if they are expired)
+    date : include those since we cannot know if they are expired)
   - total_recruitments_detected: count all Alert.objects where
     agency=instance regardless of status
 
@@ -132,7 +132,7 @@ Add these to the router in api/urls.py.
 
 ---
 
-## PROMPT B2 — Jobs list and detail endpoints
+## PROMPT B2 : Jobs list and detail endpoints
 
 ```
 Using Django REST Framework, build two endpoints for job listings.
@@ -145,7 +145,7 @@ SERIALIZER 1: JobListSerializer
 Fields from Alert model:
   - id
   - title
-  - deadline (CharField — pass as-is, do not parse)
+  - deadline (CharField : pass as-is, do not parse)
   - positions
   - source_url
   - created_at (this is "published_at" for the frontend)
@@ -249,7 +249,7 @@ Add to router in api/urls.py.
 
 ---
 
-## PROMPT B3 — System status and live feed endpoints
+## PROMPT B3 : System status and live feed endpoints
 
 ```
 Build two endpoints for system-level monitoring data.
@@ -370,7 +370,7 @@ Add both to api/urls.py:
 
 ---
 
-## PROMPT B4 — URL routing and DRF settings
+## PROMPT B4 : URL routing and DRF settings
 
 ```
 Set up the complete API routing for this Django project.
@@ -437,7 +437,7 @@ Set up the complete API routing for this Django project.
 
 ---
 
-## PROMPT B5 — Seed all 41 agencies management command
+## PROMPT B5 : Seed all 41 agencies management command
 
 ```
 Create a Django management command that seeds all 41 monitored
@@ -571,7 +571,7 @@ Run with: python manage.py seed_agencies
 
 ---
 
-## PROMPT B6 — Test all API endpoints
+## PROMPT B6 : Test all API endpoints
 
 ```
 After building the API, test every endpoint to confirm it works.

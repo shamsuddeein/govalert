@@ -1,5 +1,5 @@
 """
-Web Push Notification Service — Handles VAPID signing, payload encryption,
+Web Push Notification Service : Handles VAPID signing, payload encryption,
 dispatching web push notifications, and automatic cleanup of 404/410 expired subscriptions.
 """
 import json

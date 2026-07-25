@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 ('ai_classification', models.CharField(blank=True, default='', help_text='Gemini AI result: REAL | FAKE | UNCERTAIN', max_length=20)),
                 ('ai_confidence', models.IntegerField(default=0, help_text='Gemini AI confidence 0–100.')),
                 ('ai_red_flags', models.JSONField(blank=True, default=list, help_text='List of red flags identified by Gemini AI.')),
-                ('status', models.CharField(choices=[('PENDING', 'Pending Admin Review'), ('APPROVED', 'Approved — Sent to Users'), ('REJECTED', 'Rejected — Marked Fake'), ('HELD', 'Held for Admin Review')], db_index=True, default='PENDING', max_length=20)),
+                ('status', models.CharField(choices=[('PENDING', 'Pending Admin Review'), ('APPROVED', 'Approved : Sent to Users'), ('REJECTED', 'Rejected : Marked Fake'), ('HELD', 'Held for Admin Review')], db_index=True, default='PENDING', max_length=20)),
                 ('is_verified', models.BooleanField(default=False, help_text='Manually verified as real by an admin.')),
                 ('verified_at', models.DateTimeField(blank=True, null=True)),
                 ('admin_notes', models.TextField(blank=True, default='')),

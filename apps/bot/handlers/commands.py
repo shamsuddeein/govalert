@@ -1,5 +1,5 @@
 """
-Command handlers — stub implementations.
+Command handlers : stub implementations.
 Full logic implemented in Volume 2 (Bot Specification).
 """
 import logging
@@ -62,7 +62,7 @@ def _pk_from_ref(ref: str) -> int | None:
 
 def handle_start(message: dict):
     """
-    /start — Register user + auto-subscribe to ALL agencies immediately.
+    /start : Register user + auto-subscribe to ALL agencies immediately.
     Supports Telegram Deep Linking payload `/start general` or `/start watch_{job_ref}`.
     """
     from apps.subscriptions.services import auto_subscribe_all
@@ -154,7 +154,7 @@ def handle_start(message: dict):
 
 def handle_allalerts(message: dict):
     """
-    /allalerts — Deactivates all active TelegramJobWatch records for this user,
+    /allalerts : Deactivates all active TelegramJobWatch records for this user,
     confirming: "You're now receiving all verified alerts again."
     """
     from apps.subscriptions.models import TelegramJobWatch
@@ -177,7 +177,7 @@ def handle_allalerts(message: dict):
 
 def handle_mybookmarks(message: dict):
     """
-    /mybookmarks — List this user's active watches with instructions to reply or use /unwatch.
+    /mybookmarks : List this user's active watches with instructions to reply or use /unwatch.
     """
     from apps.subscriptions.models import TelegramJobWatch
     from apps.notifications.sender import send_message
@@ -200,7 +200,7 @@ def handle_mybookmarks(message: dict):
     items = []
     for w in active_watches:
         acronym = w.alert.agency.acronym if w.alert.agency else "MDA"
-        items.append(f"• <b>#{w.alert.pk}</b>: {w.alert.title} ({acronym}) — <i>Active Watch</i>")
+        items.append(f"• <b>#{w.alert.pk}</b>: {w.alert.title} ({acronym}) : <i>Active Watch</i>")
 
     watches_text = "\n".join(items)
     reply_msg = (
@@ -216,7 +216,7 @@ def handle_mybookmarks(message: dict):
 
 def handle_unwatch(message: dict):
     """
-    /unwatch {id} — Deactivate a specific watch, confirm removal.
+    /unwatch {id} : Deactivate a specific watch, confirm removal.
     """
     from apps.subscriptions.models import TelegramJobWatch
     from apps.alerts.models import Alert
@@ -293,7 +293,7 @@ def handle_unsubscribe(message: dict):
 
 def handle_stop(message: dict):
     """
-    NDPR /stop command — Performs complete hard deletion of all user alert subscriptions,
+    NDPR /stop command : Performs complete hard deletion of all user alert subscriptions,
     Telegram user records, and notification history for the requesting user ID.
     Sends confirmation and logs deletion timestamp.
     """
@@ -325,7 +325,7 @@ def format_agencies_message(agencies):
     offline = [a for a in agencies if a.status != "online"]
 
     lines = []
-    lines.append(f"📡 <b>Monitored Agencies</b> — {len(agencies)}")
+    lines.append(f"📡 <b>Monitored Agencies</b> : {len(agencies)}")
     lines.append(f"🟢 Online: {len(online)}   🔴 Offline: {len(offline)}")
     lines.append("")
 
@@ -351,7 +351,7 @@ def format_agencies_message(agencies):
         lines.append(f"<b>{category}</b>")
         for a in members:
             dot = "🟢" if a.status == "online" else "🔴"
-            lines.append(f"{dot} {a.acronym} — {a.name}")
+            lines.append(f"{dot} {a.acronym} : {a.name}")
             placed.add(a.acronym.upper())
         lines.append("")
 
@@ -361,7 +361,7 @@ def format_agencies_message(agencies):
         lines.append("<b>Other</b>")
         for a in rest:
             dot = "🟢" if a.status == "online" else "🔴"
-            lines.append(f"{dot} {a.acronym} — {a.name}")
+            lines.append(f"{dot} {a.acronym} : {a.name}")
 
     return "\n".join(lines)
 
@@ -524,7 +524,7 @@ def handle_report(message: dict):
 
 def handle_verify(message: dict):
     """
-    /verify — Returns bot verification notice, founder details, and official site URL.
+    /verify : Returns bot verification notice, founder details, and official site URL.
     """
     from apps.notifications.sender import send_message
     chat_id = message['chat']['id']
@@ -533,6 +533,6 @@ def handle_verify(message: dict):
         "• <b>Official Bot Username:</b> @govalerts_bot\n"
         "• <b>Official Website:</b> https://www.recruitmentalert.com.ng\n"
         "• <b>Founder:</b> Shamsuddeen Yusuf (Kaduna, Nigeria)\n\n"
-        "✅ <i>This is the only official RecruitmentAlert bot — verify at recruitmentalert.com.ng before trusting any other account.</i>"
+        "✅ <i>This is the only official RecruitmentAlert bot : verify at recruitmentalert.com.ng before trusting any other account.</i>"
     )
     send_message(chat_id=chat_id, text=text, parse_mode='HTML')

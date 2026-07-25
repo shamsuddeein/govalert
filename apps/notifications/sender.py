@@ -1,5 +1,5 @@
 """
-Telegram message sender — wraps the Bot API with rate limiting.
+Telegram message sender : wraps the Bot API with rate limiting.
 """
 import json
 import logging

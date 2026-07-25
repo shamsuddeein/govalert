@@ -1,5 +1,5 @@
 """
-reconcile_agency_data — Idempotent management command to reconcile all Agency and Portal records with the canonical source of truth.
+reconcile_agency_data : Idempotent management command to reconcile all Agency and Portal records with the canonical source of truth.
 """
 from django.core.management.base import BaseCommand
 from apps.agencies.models import Agency, Portal

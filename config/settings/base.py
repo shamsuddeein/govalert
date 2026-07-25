@@ -1,5 +1,5 @@
 """
-GovAlert Django Settings — Base (Phase 1)
+GovAlert Django Settings : Base (Phase 1)
 ₦0/month architecture: SQLite + APScheduler + Telegram channels.
 No PostgreSQL, no Redis, no Celery required.
 """
@@ -13,12 +13,12 @@ TESTING = 'test' in sys.argv or 'pytest' in sys.modules or any('pytest' in arg f
 # ─── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# ─── Security — read from env, with build-safe default for static collection step
+# ─── Security : read from env, with build-safe default for static collection step
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-build-time-placeholder-do-not-use-in-prod')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 
-# Django admin URL path — keep secret, do not use 'admin/'.
+# Django admin URL path : keep secret, do not use 'admin/'.
 # Set to a UUID or random string in production. Empty = admin disabled.
 ADMIN_URL = config('ADMIN_URL', default='admin')
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
@@ -135,7 +135,7 @@ AUTHENTICATION_BACKENDS = [
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # ─── DRF ──────────────────────────────────────────────────────────────────
-# Public endpoints (agencies, jobs, status) use AllowAny — no auth needed.
+# Public endpoints (agencies, jobs, status) use AllowAny : no auth needed.
 # Admin and user-specific endpoints declare their own permission_classes.
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -339,7 +339,7 @@ TELEGRAM_RATE_LIMIT_PER_SECOND = 30
 TELEGRAM_RATE_LIMIT_PER_USER = 1
 
 # ─── Local Config File Paths ────────────────────────────────────────────────────
-# JSON config files — static data that rarely changes
+# JSON config files : static data that rarely changes
 PORTALS_JSON_PATH = BASE_DIR / 'config' / 'portals.json'
 AGENCIES_JSON_PATH = BASE_DIR / 'config' / 'agencies.json'
 INDEX_JSON_PATH = BASE_DIR / 'config' / 'index.json'

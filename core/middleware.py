@@ -135,7 +135,7 @@ class APMMiddleware:
             if duration_ms > 500.0:
                 logger.warning(
                     f"SLOW VIEW DETECTED: {request.method} {request.path} "
-                    f"took {duration_ms:.2f}ms (>500ms threshold) — DB Queries: {db_queries}",
+                    f"took {duration_ms:.2f}ms (>500ms threshold) : DB Queries: {db_queries}",
                     extra={'structured_log': json.dumps(log_data)}
                 )
             else:

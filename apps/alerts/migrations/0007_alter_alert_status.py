@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='alert',
             name='status',
-            field=models.CharField(choices=[('PENDING', 'Pending Admin Review'), ('APPROVED', 'Approved — Sent to Users'), ('REJECTED', 'Rejected — Marked Fake'), ('HELD', 'Held for Admin Review'), ('SUPERSEDED', 'Superseded by Update')], db_index=True, default='PENDING', max_length=20),
+            field=models.CharField(choices=[('PENDING', 'Pending Admin Review'), ('APPROVED', 'Approved : Sent to Users'), ('REJECTED', 'Rejected : Marked Fake'), ('HELD', 'Held for Admin Review'), ('SUPERSEDED', 'Superseded by Update')], db_index=True, default='PENDING', max_length=20),
         ),
     ]

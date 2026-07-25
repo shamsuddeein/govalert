@@ -58,7 +58,7 @@ class Command(BaseCommand):
 
                 notif_tasks.send_message = _fake_send
             except Exception:
-                # If tasks imported differently, ignore — dispatch will be skipped if no subscribers
+                # If tasks imported differently, ignore : dispatch will be skipped if no subscribers
                 pass
 
         self.stdout.write('Running simulated detection...')

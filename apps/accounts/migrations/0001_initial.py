@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='TelegramUser',
             fields=[
-                ('telegram_id', models.BigIntegerField(help_text='Telegram user ID — permanent, unique per user.', primary_key=True, serialize=False)),
+                ('telegram_id', models.BigIntegerField(help_text='Telegram user ID : permanent, unique per user.', primary_key=True, serialize=False)),
                 ('first_name', models.CharField(max_length=100)),
                 ('last_name', models.CharField(blank=True, default='', max_length=100)),
                 ('username', models.CharField(blank=True, help_text='Telegram @username, nullable (not all users set one).', max_length=100, null=True)),
@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ('is_super_admin', models.BooleanField(default=False, help_text='Has access to /broadcast and destructive admin commands.')),
                 ('timezone', models.CharField(default='Africa/Lagos', help_text="User's preferred timezone for alert times.", max_length=50)),
                 ('language', models.CharField(default='en', help_text='Bot language preference (en / ha).', max_length=10)),
-                ('receive_alerts', models.BooleanField(default=True, help_text='Master switch — False means user has /unsubscribed.')),
+                ('receive_alerts', models.BooleanField(default=True, help_text='Master switch : False means user has /unsubscribed.')),
                 ('notification_frequency', models.CharField(choices=[('instant', 'Instant'), ('daily', 'Daily Digest')], default='instant', max_length=20)),
                 ('is_premium', models.BooleanField(default=False)),
                 ('premium_expires', models.DateTimeField(blank=True, null=True)),

@@ -1,7 +1,7 @@
 """
 GovAlert Event Channel Writer
 Writes recruitment events as JSON messages to the private govalert-events Telegram channel.
-This is the Phase 1 "database" — append-only, permanent, free.
+This is the Phase 1 "database" : append-only, permanent, free.
 
 One message per event. Never edited. Only appended.
 """
@@ -60,7 +60,7 @@ def write_event(
 
     channel_id = settings.TELEGRAM_EVENTS_CHANNEL_ID
     if not channel_id:
-        logger.warning("TELEGRAM_EVENTS_CHANNEL_ID not set — skipping event write.")
+        logger.warning("TELEGRAM_EVENTS_CHANNEL_ID not set : skipping event write.")
         return False
 
     payload = {
@@ -129,7 +129,7 @@ def post_public_alert(text: str) -> Optional[int]:
 
     channel_id = settings.TELEGRAM_PUBLIC_CHANNEL_ID
     if not channel_id:
-        logger.warning("TELEGRAM_PUBLIC_CHANNEL_ID not set — skipping public post.")
+        logger.warning("TELEGRAM_PUBLIC_CHANNEL_ID not set : skipping public post.")
         return None
 
     try:

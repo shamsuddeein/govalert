@@ -1,6 +1,6 @@
 """
 GovAlert Accounts Models
-Defines TelegramUser — the primary user entity, identified by Telegram ID.
+Defines TelegramUser : the primary user entity, identified by Telegram ID.
 """
 from django.db import models
 from django.utils import timezone as tz
@@ -17,12 +17,12 @@ class UserState(models.TextChoices):
 class TelegramUser(models.Model):
     """
     Represents a GovAlert bot user identified by their Telegram user ID.
-    The telegram_id is the PRIMARY KEY — no surrogate key needed.
+    The telegram_id is the PRIMARY KEY : no surrogate key needed.
     """
     # ── Identity ──────────────────────────────────────────────────────────────
     telegram_id = models.BigIntegerField(
         primary_key=True,
-        help_text="Telegram user ID — permanent, unique per user."
+        help_text="Telegram user ID : permanent, unique per user."
     )
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True, default='')
@@ -58,7 +58,7 @@ class TelegramUser(models.Model):
     )
     receive_alerts = models.BooleanField(
         default=True,
-        help_text="Master switch — False means user has /unsubscribed."
+        help_text="Master switch : False means user has /unsubscribed."
     )
     notification_frequency = models.CharField(
         max_length=20,

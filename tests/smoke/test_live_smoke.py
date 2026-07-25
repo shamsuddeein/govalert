@@ -1,5 +1,5 @@
 """
-Live Deployment Smoke Test Suite — RecruitmentAlert (GovAlert).
+Live Deployment Smoke Test Suite : RecruitmentAlert (GovAlert).
 
 Verifies critical running endpoints post-deployment:
 1. Health check returns 200/degraded components.

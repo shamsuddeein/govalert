@@ -44,7 +44,7 @@ class Command(BaseCommand):
         # 1. Telegram Subscribers
         telegram_users = TelegramUser.objects.filter(state=UserState.ACTIVE, receive_alerts=True)
         tg_success = 0
-        formatted_tg_text = f"📢 <b>Broadcast Announcement</b>\n\n{text}\n\n<i>— RecruitmentAlert Team</i>"
+        formatted_tg_text = f"📢 <b>Broadcast Announcement</b>\n\n{text}\n\n<i>: RecruitmentAlert Team</i>"
         for user in telegram_users:
             try:
                 res = send_message(chat_id=user.telegram_id, text=formatted_tg_text, parse_mode='HTML')
@@ -71,7 +71,7 @@ class Command(BaseCommand):
             try:
                 send_mail(
                     subject=subject,
-                    message=f"Hello,\n\n{text}\n\n— RecruitmentAlert Intelligence Team\nhttps://www.recruitmentalert.com.ng",
+                    message=f"Hello,\n\n{text}\n\n: RecruitmentAlert Intelligence Team\nhttps://www.recruitmentalert.com.ng",
                     from_email=from_email,
                     recipient_list=[email],
                     fail_silently=True,

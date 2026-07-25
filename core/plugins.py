@@ -84,7 +84,7 @@ class RequestsScraper(BaseScraperBackend):
                 content = response.text.replace('\x00', '') if response.text else ''
                 return content, response.status_code, response_time
             except ScraperException:
-                raise  # Size cap and SSRF — not retryable
+                raise  # Size cap and SSRF : not retryable
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 last_exc = e
                 if attempt == 0:

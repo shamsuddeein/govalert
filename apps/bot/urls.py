@@ -1,5 +1,5 @@
 """
-Bot app URLs — Telegram webhook endpoint.
+Bot app URLs : Telegram webhook endpoint.
 """
 from django.urls import path
 from .webhook import TelegramWebhookView

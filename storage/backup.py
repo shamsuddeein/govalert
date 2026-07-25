@@ -29,7 +29,7 @@ def export_and_backup() -> bool:
 
     channel_id = settings.TELEGRAM_BACKUP_CHANNEL_ID
     if not channel_id:
-        logger.warning("TELEGRAM_BACKUP_CHANNEL_ID not set — skipping backup.")
+        logger.warning("TELEGRAM_BACKUP_CHANNEL_ID not set : skipping backup.")
         return False
 
     db_path = settings.DATABASES['default']['NAME']
@@ -51,7 +51,7 @@ def export_and_backup() -> bool:
         json_bytes = json.dumps(backup, indent=2, ensure_ascii=False, default=str).encode('utf-8')
         filename = f"backup_{date.today().isoformat()}.json"
         caption = (
-            f"🗄️ Nightly Backup — {date.today()}\n"
+            f"🗄️ Nightly Backup : {date.today()}\n"
             f"👥 Users: {len(backup['users'])}\n"
             f"🔔 Alerts: {len(backup['alerts'])}\n"
             f"📨 Notifications: {len(backup['notifications'])}"

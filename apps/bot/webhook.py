@@ -1,5 +1,5 @@
 """
-Telegram Webhook View — receives incoming updates from Telegram.
+Telegram Webhook View : receives incoming updates from Telegram.
 Validates the secret token, parses the Update, and dispatches to handlers.
 """
 import json
@@ -29,7 +29,7 @@ class TelegramWebhookView(View):
         secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token', '')
         expected = settings.TELEGRAM_WEBHOOK_SECRET
 
-        # Fail hard if secret is not configured — an empty secret would allow
+        # Fail hard if secret is not configured : an empty secret would allow
         # any caller to bypass validation and inject fake Telegram updates.
         if not expected or not hmac.compare_digest(secret, expected):
             logger.warning("Rejected webhook request: invalid or missing secret token.")

@@ -1,5 +1,5 @@
 """
-GovAlert PWA Root Views — Serves service-worker.js, manifest.json, and offline.html at domain root scope.
+GovAlert PWA Root Views : Serves service-worker.js, manifest.json, and offline.html at domain root scope.
 """
 import os
 from django.http import HttpResponse, Http404

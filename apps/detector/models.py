@@ -1,5 +1,5 @@
 """
-Detector App Models — FakeDomain and AlertReport.
+Detector App Models : FakeDomain and AlertReport.
 """
 from django.db import models
 from django.utils import timezone
@@ -98,4 +98,4 @@ class AlertReport(models.Model):
         verbose_name_plural = 'Alert Reports'
 
     def __str__(self):
-        return f"Report by {self.user.display_name} on Alert #{self.alert_id} — {self.reason}"
+        return f"Report by {self.user.display_name} on Alert #{self.alert_id} : {self.reason}"

@@ -1,13 +1,13 @@
 """
-GovAlert Django Settings — Production (Phase 1)
+GovAlert Django Settings : Production (Phase 1)
 Free-tier deployment: Railway / Render / fly.io
-Still SQLite — no PostgreSQL needed until Phase 2.
+Still SQLite : no PostgreSQL needed until Phase 2.
 """
 from .base import *  # noqa
 
 DEBUG = False
 
-# ALLOWED_HOSTS in production — defaults to explicit domain list (including Railway/Render subdomains)
+# ALLOWED_HOSTS in production : defaults to explicit domain list (including Railway/Render subdomains)
 default_allowed_hosts = (
     'recruitmentalert.com.ng,www.recruitmentalert.com.ng,'
     '.railway.app,.up.railway.app,.onrender.com,localhost,127.0.0.1'
@@ -36,7 +36,7 @@ default_csrf_origins = (
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default=default_csrf_origins, cast=Csv())
 X_FRAME_OPTIONS = 'DENY'
 
-# ─── Logging — Production ──────────────────────────────────────────────────────
+# ─── Logging : Production ──────────────────────────────────────────────────────
 import os
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
@@ -49,7 +49,7 @@ LOGGING['handlers']['file'] = {
 }
 LOGGING['root']['handlers'] = ['console', 'file']
 
-# ─── Phase 2 upgrade hints (commented out — uncomment when ready) ──────────────
+# ─── Phase 2 upgrade hints (commented out : uncomment when ready) ──────────────
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',

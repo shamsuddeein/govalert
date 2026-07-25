@@ -1,5 +1,5 @@
 """
-audit_agency_data — Management command to perform a complete system-wide audit of all Agency and Portal records.
+audit_agency_data : Management command to perform a complete system-wide audit of all Agency and Portal records.
 """
 from django.core.management.base import BaseCommand
 from django.db.models import Count

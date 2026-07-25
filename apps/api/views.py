@@ -1,5 +1,5 @@
 """
-RecruitmentAlert API v1 — Public endpoints for agencies, jobs, and system status.
+RecruitmentAlert API v1 : Public endpoints for agencies, jobs, and system status.
 
 Endpoint map:
   GET /api/v1/agencies/             → AgencyListView
@@ -114,13 +114,13 @@ SYSTEM_STATUS_CACHE_KEY = 'api_system_status_v1'
 SYSTEM_STATUS_CACHE_TTL = 60  # seconds
 
 HEALTH_CACHE_KEY = 'api_health_v1'
-HEALTH_CACHE_TTL = 30  # seconds — load balancer pings frequently; 30s is sufficient
+HEALTH_CACHE_TTL = 30  # seconds : load balancer pings frequently; 30s is sufficient
 
 ADMIN_STATS_CACHE_KEY = 'api_admin_stats_v1'
-ADMIN_STATS_CACHE_TTL = 120  # seconds — admin stats don't need sub-second freshness
+ADMIN_STATS_CACHE_TTL = 120  # seconds : admin stats don't need sub-second freshness
 
 AGENCY_LIST_CACHE_KEY = 'api_agency_list_v1'
-AGENCY_LIST_CACHE_TTL = 60  # seconds — same TTL as system status
+AGENCY_LIST_CACHE_TTL = 60  # seconds : same TTL as system status
 
 
 # ─── Pagination ────────────────────────────────────────────────────────────────
@@ -1112,7 +1112,7 @@ class AdminBroadcastView(APIView):
             try:
                 send_mail(
                     subject=subject,
-                    message=f"Hello,\n\n{text}\n\n— RecruitmentAlert Intelligence Team\nhttps://www.recruitmentalert.com.ng",
+                    message=f"Hello,\n\n{text}\n\n: RecruitmentAlert Intelligence Team\nhttps://www.recruitmentalert.com.ng",
                     from_email=from_email,
                     recipient_list=[email],
                     fail_silently=True,
@@ -1263,8 +1263,8 @@ class LogoutView(APIView):
 
 class MeView(APIView):
     """
-    GET /api/auth/me/ — Get current user profile
-    PATCH /api/auth/me/ — Update profile info
+    GET /api/auth/me/ : Get current user profile
+    PATCH /api/auth/me/ : Update profile info
     """
     permission_classes = [IsAuthenticated]
 
@@ -1317,8 +1317,8 @@ class PasswordChangeView(APIView):
 
 class SavedJobsView(APIView):
     """
-    GET /api/v1/me/saved-jobs/ — List saved jobs
-    POST /api/v1/me/saved-jobs/ — Save a job {ref: "1234-GA"}
+    GET /api/v1/me/saved-jobs/ : List saved jobs
+    POST /api/v1/me/saved-jobs/ : Save a job {ref: "1234-GA"}
     """
     permission_classes = [IsAuthenticated]
 
@@ -1353,7 +1353,7 @@ class SavedJobsView(APIView):
 
 class SavedJobDetailView(APIView):
     """
-    DELETE /api/v1/me/saved-jobs/{ref}/ — Unsave a job
+    DELETE /api/v1/me/saved-jobs/{ref}/ : Unsave a job
     """
     permission_classes = [IsAuthenticated]
 
@@ -1472,7 +1472,7 @@ class CustomAdminAlertListView(APIView):
 
     def get(self, request):
         # reconcile_duplicate_pending_alerts() was previously called here on every
-        # GET, which is a write operation inside a read endpoint — incorrect.
+        # GET, which is a write operation inside a read endpoint : incorrect.
         # It is now only called via POST /api/v1/admin/alerts/reconcile/.
 
         status_param = request.query_params.get('status', 'PENDING').strip()
@@ -1656,7 +1656,7 @@ class CustomAdminAlertReconcileView(APIView):
     Explicit operator action to deduplicate pending alerts.
 
     Previously this ran as a side-effect inside every GET to the alert list,
-    which is incorrect — a write operation must not live inside a read endpoint.
+    which is incorrect : a write operation must not live inside a read endpoint.
     This endpoint is intended for manual operator use or periodic Celery Beat schedule.
     """
     permission_classes = [IsStaffUser]
@@ -1760,9 +1760,9 @@ class CustomAdminAlertHoldView(APIView):
 
 class CustomAdminAlertUpdateView(APIView):
     """
-    GET    /api/v1/admin/alerts/{id}/ — fetch detail of a specific alert
-    PATCH  /api/v1/admin/alerts/{id}/ — edit alert post fields (title, positions, deadline, requirements, source_url, status, trust_score, admin_notes)
-    DELETE /api/v1/admin/alerts/{id}/ — delete alert post
+    GET    /api/v1/admin/alerts/{id}/ : fetch detail of a specific alert
+    PATCH  /api/v1/admin/alerts/{id}/ : edit alert post fields (title, positions, deadline, requirements, source_url, status, trust_score, admin_notes)
+    DELETE /api/v1/admin/alerts/{id}/ : delete alert post
     """
     permission_classes = [IsStaffUser]
 
@@ -1891,8 +1891,8 @@ class CustomAdminAlertStatsView(APIView):
 
 class CustomAdminAgencyListCreateView(APIView):
     """
-    GET  /api/v1/admin/agencies/ — list all agencies (including inactive)
-    POST /api/v1/admin/agencies/ — create new agency
+    GET  /api/v1/admin/agencies/ : list all agencies (including inactive)
+    POST /api/v1/admin/agencies/ : create new agency
     """
     permission_classes = [IsStaffUser]
 
@@ -1922,9 +1922,9 @@ class CustomAdminAgencyListCreateView(APIView):
 
 class CustomAdminAgencyDetailView(APIView):
     """
-    GET    /api/v1/admin/agencies/{id}/ — full agency detail
-    PATCH  /api/v1/admin/agencies/{id}/ — edit any field
-    DELETE /api/v1/admin/agencies/{id}/ — soft delete (set is_active=False)
+    GET    /api/v1/admin/agencies/{id}/ : full agency detail
+    PATCH  /api/v1/admin/agencies/{id}/ : edit any field
+    DELETE /api/v1/admin/agencies/{id}/ : soft delete (set is_active=False)
     """
     permission_classes = [IsStaffUser]
 
@@ -1955,7 +1955,7 @@ class CustomAdminAgencyDetailView(APIView):
         if not agency:
             return Response({'detail': 'Agency not found.'}, status=http_status.HTTP_404_NOT_FOUND)
         
-        # Soft delete — never hard delete an agency with attached alerts/portals
+        # Soft delete : never hard delete an agency with attached alerts/portals
         agency.is_active = False
         agency.save(update_fields=['is_active', 'updated_at'])
         return Response({
@@ -1969,8 +1969,8 @@ class CustomAdminAgencyDetailView(APIView):
 
 class CustomAdminPortalListCreateView(APIView):
     """
-    GET  /api/v1/admin/portals/ — list all, filterable by agency & health_status
-    POST /api/v1/admin/portals/ — create new portal for an agency
+    GET  /api/v1/admin/portals/ : list all, filterable by agency & health_status
+    POST /api/v1/admin/portals/ : create new portal for an agency
     """
     permission_classes = [IsStaffUser]
 
@@ -2006,9 +2006,9 @@ class CustomAdminPortalListCreateView(APIView):
 
 class CustomAdminPortalDetailView(APIView):
     """
-    GET    /api/v1/admin/portals/{id}/ — full detail including last 10 snapshots
-    PATCH  /api/v1/admin/portals/{id}/ — edit url, poll_interval, priority, is_active, etc.
-    DELETE /api/v1/admin/portals/{id}/ — soft delete (is_active=False)
+    GET    /api/v1/admin/portals/{id}/ : full detail including last 10 snapshots
+    PATCH  /api/v1/admin/portals/{id}/ : edit url, poll_interval, priority, is_active, etc.
+    DELETE /api/v1/admin/portals/{id}/ : soft delete (is_active=False)
     """
     permission_classes = [IsStaffUser]
 
@@ -2070,7 +2070,7 @@ class CustomAdminPortalTriggerCheckView(APIView):
             exc_str = str(exc)
             if "NUL" in exc_str or "0x00" in exc_str or "parse" in exc_str.lower() or "encoding" in exc_str.lower():
                 return Response(
-                    {'detail': 'This portal returned content that could not be parsed — may not be a standard HTML page.'},
+                    {'detail': 'This portal returned content that could not be parsed : may not be a standard HTML page.'},
                     status=http_status.HTTP_422_UNPROCESSABLE_ENTITY
                 )
             return Response(

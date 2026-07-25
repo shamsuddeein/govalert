@@ -1,5 +1,5 @@
 """
-core/csp_middleware.py — Security & Content Security Policy middleware.
+core/csp_middleware.py : Security & Content Security Policy middleware.
 
 Adds comprehensive security headers to every response sent by the Django backend:
   - Content-Security-Policy (default-src 'self', allows Google Fonts, Railway API, inline styles/scripts)

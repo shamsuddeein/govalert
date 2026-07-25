@@ -1,5 +1,5 @@
 """
-Admin bot command handlers — /admin, /broadcast, /stats.
+Admin bot command handlers : /admin, /broadcast, /stats.
 Restricted to is_admin / is_super_admin users only.
 """
 import logging
@@ -47,14 +47,14 @@ def handle_admin(message: dict):
         f"⏳ Alerts Pending Review: <b>{pending_alerts}</b>\n"
         f"❌ Portals Down: <b>{portals_down}</b>\n\n"
         f"Commands:\n"
-        f"/stats — Full statistics\n"
-        f"/broadcast — Send message to all users"
+        f"/stats : Full statistics\n"
+        f"/broadcast : Send message to all users"
     )
     send_message(chat_id=chat_id, text=text, parse_mode='HTML')
 
 
 def handle_broadcast(message: dict):
-    """Super admin only — initiate a broadcast message."""
+    """Super admin only : initiate a broadcast message."""
     from apps.accounts.models import TelegramUser
     from apps.notifications.sender import send_message
     telegram_id = message.get('from', {}).get('id')

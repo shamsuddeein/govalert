@@ -34,7 +34,7 @@ def _http_get_with_impersonation(url: str, headers: dict, timeout: int = 30):
             url,
             headers=headers,
             timeout=timeout,
-            verify=True,       # MUST be True — never disable TLS verification
+            verify=True,       # MUST be True : never disable TLS verification
             impersonate="chrome124",
             allow_redirects=True,
             stream=True,       # stream to enforce size cap before reading

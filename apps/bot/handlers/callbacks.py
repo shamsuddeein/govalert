@@ -112,7 +112,7 @@ def _handle_report_reason(callback_query: dict, data: str):
             alert=alert, user=user,
             defaults={'reason': reason}
         )
-        # Check if 3+ reports — trigger admin escalation
+        # Check if 3+ reports : trigger admin escalation
         report_count = AlertReport.objects.filter(alert=alert).count()
         alert.report_count = report_count
         alert.save(update_fields=['report_count'])

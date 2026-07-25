@@ -1,5 +1,5 @@
 """
-Bot update dispatcher — routes incoming Telegram updates to the correct handler.
+Bot update dispatcher : routes incoming Telegram updates to the correct handler.
 """
 import logging
 from typing import Any
@@ -21,7 +21,7 @@ def dispatch_update(data: dict[str, Any]) -> None:
     elif 'callback_query' in data:
         _handle_callback_query(data['callback_query'])
     elif 'inline_query' in data:
-        logger.info("Inline query received — not yet implemented.")
+        logger.info("Inline query received : not yet implemented.")
     else:
         logger.warning(f"Unknown update type in update #{update_id}: {list(data.keys())}")
 
@@ -128,7 +128,7 @@ def _handle_message(message: dict) -> None:
             )
             _send_error_reply(message)
     else:
-        # Unknown command or plain text — ignore gracefully
+        # Unknown command or plain text : ignore gracefully
         logger.debug(f"No handler for: {command}")
 
 

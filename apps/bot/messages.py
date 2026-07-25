@@ -42,7 +42,7 @@ Your data will never be sold or shared. You can delete your profile and subscrip
 """
 
 HELP_MESSAGE = """
-<b>RecruitmentAlert — Command List</b>
+<b>RecruitmentAlert : Command List</b>
 
 /start - Register & activate alerts
 /jobs - View latest verified job openings

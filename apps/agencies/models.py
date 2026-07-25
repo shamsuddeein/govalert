@@ -1,7 +1,7 @@
 """
 GovAlert Agencies Models
-Agency — a Nigerian government body being monitored.
-Portal — a specific URL within an agency that is scraped for recruitment news.
+Agency : a Nigerian government body being monitored.
+Portal : a specific URL within an agency that is scraped for recruitment news.
 """
 from django.db import models
 from django.utils.text import slugify
@@ -132,7 +132,7 @@ class Agency(models.Model):
         verbose_name_plural = 'Agencies'
 
     def __str__(self):
-        return f"{self.acronym} — {self.name}"
+        return f"{self.acronym} : {self.name}"
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -264,7 +264,7 @@ class Portal(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.agency.acronym} — {self.name} ({self.url})"
+        return f"{self.agency.acronym} : {self.name} ({self.url})"
 
     @property
     def is_up(self) -> bool:

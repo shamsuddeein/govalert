@@ -292,7 +292,7 @@ class Command(BaseCommand):
                 existing_portals = list(Portal.objects.filter(url=portal_url))
 
             if not existing_portals:
-                # URL may have changed — look up by agency and update the stale URL
+                # URL may have changed : look up by agency and update the stale URL
                 existing_portals = list(Portal.objects.filter(agency=agency))
 
             if existing_portals:

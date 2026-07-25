@@ -1,5 +1,5 @@
 """
-End-to-End Integration Test Suite — RecruitmentAlert.
+End-to-End Integration Test Suite : RecruitmentAlert.
 
 Tests complete user & system journey from:
 Scraper portal check -> DOM diffing -> Trust Score validation -> Official Alert publication -> Celery fanout dispatch -> Database notification & web push queueing.

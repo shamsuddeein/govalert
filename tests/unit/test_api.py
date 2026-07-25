@@ -90,7 +90,7 @@ def test_pending_alerts_excluded_from_public_api():
     detail_url = reverse('api:job_detail', kwargs={'ref': pending_ref})
     detail_response = client.get(detail_url)
     assert detail_response.status_code == 404, (
-        "PENDING alert is accessible via the detail endpoint — must return 404"
+        "PENDING alert is accessible via the detail endpoint : must return 404"
     )
 
 

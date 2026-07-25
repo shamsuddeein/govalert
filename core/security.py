@@ -1,24 +1,24 @@
 """
-core/security.py — SSRF guard and outbound request safety.
+core/security.py : SSRF guard and outbound request safety.
 
 Every URL the crawler visits comes from the Portal.url field in the database.
 If an attacker gains write access to any Portal object (via admin compromise,
 future injection, or insider threat) they can redirect the crawler to:
 
-  - http://169.254.169.254/ (AWS metadata service — credential leak)
-  - http://127.0.0.1:6379/  (Redis — unauthenticated command execution)
+  - http://169.254.169.254/ (AWS metadata service : credential leak)
+  - http://127.0.0.1:6379/  (Redis : unauthenticated command execution)
   - http://10.0.0.x/        (internal network scanning)
   - http://192.168.x.x/     (LAN scanning)
   - file:///etc/passwd       (local file read)
 
 This module provides:
-  1. validate_outbound_url() — must be called before every outbound HTTP request
+  1. validate_outbound_url() : must be called before every outbound HTTP request
      in the crawler. Resolves the domain to an IP and rejects private/reserved
      address space.
   2. A hard response size cap (10 MB) to prevent memory exhaustion from a
      malicious server sending an enormous response.
   3. TLS verification is ALWAYS enabled (verify=True). There is no legitimate
-     reason to disable it globally — government portals with self-signed certs
+     reason to disable it globally : government portals with self-signed certs
      should have their CA added to the trust store, not have verification disabled.
 """
 import ipaddress
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 _BLOCKED_DOMAINS = frozenset()
 
 # Maximum response body size in bytes. A 500MB response from a "portal" is not
-# a portal — it is a memory exhaustion attack.
+# a portal : it is a memory exhaustion attack.
 MAX_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 # Private and reserved IP ranges that must never be contacted.
@@ -66,7 +66,7 @@ def _is_private_ip(ip_str: str) -> bool:
         ip = ipaddress.ip_address(ip_str)
         return any(ip in net for net in _PRIVATE_NETWORKS)
     except ValueError:
-        # Unparseable IP — treat as blocked.
+        # Unparseable IP : treat as blocked.
         return True
 
 
@@ -103,9 +103,9 @@ def validate_outbound_url(url: str) -> None:
             raise ScraperException(
                 f"SSRF guard: rejected private IP literal {hostname!r} in URL: {url!r}"
             )
-        return  # Public IP literal — allow.
+        return  # Public IP literal : allow.
     except ValueError:
-        pass  # Not an IP literal — proceed to DNS resolution.
+        pass  # Not an IP literal : proceed to DNS resolution.
 
     # Resolve hostname and check every returned address.
     try:
@@ -119,7 +119,7 @@ def validate_outbound_url(url: str) -> None:
         ip_str = sockaddr[0]
         if _is_private_ip(ip_str):
             logger.warning(
-                f"SSRF guard: blocked request to {url!r} — "
+                f"SSRF guard: blocked request to {url!r} : "
                 f"{hostname!r} resolved to private IP {ip_str!r}"
             )
             raise ScraperException(

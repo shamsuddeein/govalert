@@ -1,5 +1,5 @@
 """
-Alert message formatters — builds Telegram HTML messages from Alert objects.
+Alert message formatters : builds Telegram HTML messages from Alert objects.
 Professional layout without emojis, symbols, or AI/trust branding.
 Uses native Telegram HTML tags (blockquote, bold, anchor) for structural card layouts.
 """

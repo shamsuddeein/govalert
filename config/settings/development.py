@@ -1,5 +1,5 @@
 """
-GovAlert Django Settings — Development
+GovAlert Django Settings : Development
 DEBUG mode. Uses SQLite (same as production in Phase 1).
 """
 from .base import *  # noqa

@@ -82,7 +82,7 @@ def portal_check(self, portal_id: int):
         portal.consecutive_failures += 1
 
         if portal.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-            # Auto-suspend — stop wasting scrape budget on dead portals.
+            # Auto-suspend : stop wasting scrape budget on dead portals.
             portal.is_active = False
             portal.save(update_fields=[
                 'last_checked_at', 'status', 'health_status', 'consecutive_failures', 'is_active'
@@ -154,7 +154,7 @@ def portal_check(self, portal_id: int):
                         f"Confidence={matched_data['confidence']}. "
                         f"Added text sample: '{snippet}'"
                     )
-    # else: first-ever snapshot — just establish baseline, nothing to compare yet.
+    # else: first-ever snapshot : just establish baseline, nothing to compare yet.
 
     # ── Compute uptime from the last 100 snapshots (single aggregate query) ──
     # Previously iterated 100 Python objects; now one SQL COUNT with a filter.
@@ -215,7 +215,7 @@ def check_standard_portals():
     """
     Fan out checks for MEDIUM priority portals (every 20 minutes).
 
-    Calls portal_check.apply_async() per portal — see check_high_priority_portals
+    Calls portal_check.apply_async() per portal : see check_high_priority_portals
     for the rationale.
     """
     from apps.agencies.models import Portal, PortalPriority
@@ -233,7 +233,7 @@ def check_low_activity_portals():
     """
     Fan out checks for LOW priority portals (every 60 minutes).
 
-    Calls portal_check.apply_async() per portal — see check_high_priority_portals
+    Calls portal_check.apply_async() per portal : see check_high_priority_portals
     for the rationale.
     """
     from apps.agencies.models import Portal, PortalPriority
@@ -269,7 +269,7 @@ def daily_health_report():
     from apps.notifications.sender import send_message
     from django.conf import settings
 
-    # Always report on YESTERDAY — not today (which is incomplete at 08:00).
+    # Always report on YESTERDAY : not today (which is incomplete at 08:00).
     yesterday = timezone.now().date() - timedelta(days=1)
 
     agg = Snapshot.objects.filter(created_at__date=yesterday).aggregate(
@@ -302,7 +302,7 @@ def daily_health_report():
         send_message(chat_id=backup_channel_id, text=report)
         logger.info("Daily health report generated and sent.")
     else:
-        logger.warning("TELEGRAM_BACKUP_CHANNEL_ID not set — skipping sending daily health report.")
+        logger.warning("TELEGRAM_BACKUP_CHANNEL_ID not set : skipping sending daily health report.")
 
 
 @shared_task(ignore_result=True)
@@ -378,7 +378,7 @@ def purge_old_snapshot_content():
     status_code, and timing data for historical analysis while reclaiming
     the bulk of the storage (the full page text).
 
-    Safe to re-run — idempotent (empty strings are skipped by the filter).
+    Safe to re-run : idempotent (empty strings are skipped by the filter).
     """
     from apps.monitor.models import Snapshot
 

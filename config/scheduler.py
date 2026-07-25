@@ -1,13 +1,13 @@
 """
-GovAlert APScheduler — Phase 1 task scheduler.
+GovAlert APScheduler : Phase 1 task scheduler.
 Replaces Celery. No Redis needed. Runs in-process.
 
 Started by the Django app via AppConfig.ready() in apps/monitor/apps.py.
 
 Executor assignment strategy (to reduce SQLite contention):
-  high   — portal monitoring (time-sensitive, high throughput)
-  medium — notification retries (important but not latency-critical)
-  low    — maintenance tasks: cleanup, backup, health reports
+  high   : portal monitoring (time-sensitive, high throughput)
+  medium : notification retries (important but not latency-critical)
+  low    : maintenance tasks: cleanup, backup, health reports
 
 The SQLite "database is locked" warning from django_apscheduler occurs when
 two executor threads try to write the job's next_run_time simultaneously.
@@ -109,7 +109,7 @@ def start():
     scheduler = get_scheduler()
 
     if scheduler.running:
-        logger.info("Scheduler already running — skipping start.")
+        logger.info("Scheduler already running : skipping start.")
         return
 
     # ── Portal monitoring jobs (HIGH priority) ──────────────────────────────────
@@ -185,7 +185,7 @@ def start():
     logger.info("✅ APScheduler started in-memory with %d jobs.", len(scheduler.get_jobs()))
 
     # Trigger only the high-priority job immediately on startup.
-    # Standard (MEDIUM) portals run 42 portals serially — triggering that
+    # Standard (MEDIUM) portals run 42 portals serially : triggering that
     # immediately on startup causes a boot-time spike and competes with the
     # scheduler's own DB writes, worsening the SQLite lock warning.
     try:

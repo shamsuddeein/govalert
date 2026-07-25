@@ -1,5 +1,5 @@
 """
-Monitor App Models — Snapshot and PortalHealthLog.
+Monitor App Models : Snapshot and PortalHealthLog.
 """
 from django.db import models
 from django.utils import timezone
@@ -55,7 +55,7 @@ class Snapshot(models.Model):
 
     def __str__(self):
         flag = ' ⚡ CHANGE' if self.has_change else ''
-        return f"Snapshot #{self.pk} — {self.portal} — {self.created_at.strftime('%Y-%m-%d %H:%M')}{flag}"
+        return f"Snapshot #{self.pk} : {self.portal} : {self.created_at.strftime('%Y-%m-%d %H:%M')}{flag}"
 
 
 class PortalHealthLog(models.Model):
@@ -85,4 +85,4 @@ class PortalHealthLog(models.Model):
         verbose_name_plural = 'Portal Health Logs'
 
     def __str__(self):
-        return f"{self.portal.agency.acronym} — {self.date} — {self.uptime_percentage}% uptime"
+        return f"{self.portal.agency.acronym} : {self.date} : {self.uptime_percentage}% uptime"

@@ -16,7 +16,7 @@
 
 ---
 
-## 2. Data Protection Impact Assessment (DPIA) — Crawler System
+## 2. Data Protection Impact Assessment (DPIA) : Crawler System
 
 ### System Overview
 The RecruitmentAlert monitoring engine operates automated crawlers visiting 42 official Nigerian federal government recruitment portals (`.gov.ng`).

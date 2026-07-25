@@ -20,8 +20,8 @@ class EventType(models.TextChoices):
 
 class AlertStatus(models.TextChoices):
     PENDING = 'PENDING', 'Pending Admin Review'
-    APPROVED = 'APPROVED', 'Approved — Sent to Users'
-    REJECTED = 'REJECTED', 'Rejected — Marked Fake'
+    APPROVED = 'APPROVED', 'Approved : Sent to Users'
+    REJECTED = 'REJECTED', 'Rejected : Marked Fake'
     HELD = 'HELD', 'Held for Admin Review'
     SUPERSEDED = 'SUPERSEDED', 'Superseded by Update'
 
@@ -90,7 +90,7 @@ class RecruitmentEvent(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.event_id} — {self.status} — {self.event_type} — {self.portal.agency.acronym}"
+        return f"{self.event_id} : {self.status} : {self.event_type} : {self.portal.agency.acronym}"
 
 
 class DecisionLog(models.Model):
@@ -141,7 +141,7 @@ class DecisionLog(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Decision for {self.event.event_id} — Trust: {self.final_trust}"
+        return f"Decision for {self.event.event_id} : Trust: {self.final_trust}"
 
 
 class Alert(models.Model):
@@ -281,7 +281,7 @@ class Alert(models.Model):
         ]
 
     def __str__(self):
-        return f"[{self.agency.acronym}] {self.event_type} — Trust {self.trust_score} — {self.created_at.date()}"
+        return f"[{self.agency.acronym}] {self.event_type} : Trust {self.trust_score} : {self.created_at.date()}"
 
     @property
     def trust_category(self) -> str:

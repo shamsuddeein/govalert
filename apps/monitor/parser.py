@@ -8,7 +8,7 @@ from core.utils import sanitise_html
 logger = logging.getLogger(__name__)
 
 # ─── Recruitment Keyword Dictionaries ─────────────────────────────────────────
-# NOTE: Do NOT hardcode specific years (e.g. "2024/2025 recruitment") — those
+# NOTE: Do NOT hardcode specific years (e.g. "2024/2025 recruitment") : those
 # expire and silently stop matching. Use year-agnostic patterns instead.
 
 HIGH_CONFIDENCE_TRIGGERS = [
