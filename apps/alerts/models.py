@@ -360,3 +360,41 @@ class BlogPost(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class RejectedDetection(models.Model):
+    """
+    Records detected listings that were automatically rejected before reaching the pending queue
+    (e.g., due to stale deadlines >7 days in the past).
+    """
+    portal = models.ForeignKey(
+        'agencies.Portal',
+        on_delete=models.CASCADE,
+        related_name='rejected_detections'
+    )
+    agency = models.ForeignKey(
+        'agencies.Agency',
+        on_delete=models.CASCADE,
+        related_name='rejected_detections'
+    )
+    title = models.CharField(max_length=500, blank=True, default='')
+    deadline = models.CharField(max_length=100, blank=True, default='')
+    positions = models.TextField(blank=True, default='')
+    status = models.CharField(
+        max_length=50,
+        default='AUTO REJECTED STALE DEADLINE',
+        db_index=True,
+        help_text="Rejection status e.g. AUTO REJECTED STALE DEADLINE"
+    )
+    reason = models.TextField(help_text="Detailed reason for automatic rejection.")
+    raw_content_excerpt = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = 'rejected_detections'
+        ordering = ['-created_at']
+        verbose_name = 'Rejected Detection'
+        verbose_name_plural = 'Rejected Detections'
+
+    def __str__(self):
+        return f"[{self.status}] {self.agency.acronym} - {self.title[:50]}"

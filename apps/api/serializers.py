@@ -485,18 +485,23 @@ class AdminAlertDetailSerializer(serializers.ModelSerializer):
     verified_by = serializers.SerializerMethodField()
     trust_score_overridden_by = serializers.SerializerMethodField()
     recruitment_event = serializers.SerializerMethodField()
+    deadline_validation = serializers.SerializerMethodField()
 
     class Meta:
         model = Alert
         fields = [
             'id', 'title', 'agency', 'portal', 'agency_name', 'agency_acronym',
-            'portal_name', 'portal_url', 'deadline', 'positions',
+            'portal_name', 'portal_url', 'deadline', 'deadline_validation', 'positions',
             'requirements', 'source_url', 'content_excerpt', 'trust_score',
             'trust_score_overridden_by', 'trust_score_overridden_at',
             'ai_classification', 'ai_confidence', 'ai_red_flags', 'status',
             'is_verified', 'verified_by', 'verified_at', 'admin_notes',
             'report_count', 'created_at', 'recruitment_event',
         ]
+
+    def get_deadline_validation(self, obj):
+        from apps.monitor.parser import get_deadline_validation_status
+        return get_deadline_validation_status(obj.deadline)
 
     def get_agency(self, obj):
         if obj.agency:

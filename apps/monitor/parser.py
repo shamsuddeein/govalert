@@ -111,6 +111,80 @@ def validate_and_sanitize_deadline(deadline_str: str) -> str:
     return cleaned[:80] if len(cleaned) >= 5 else "Not Specified"
 
 
+def parse_deadline_to_date(deadline_str: str):
+    """
+    Parses a sanitized deadline string into a datetime.date object.
+    Returns None if deadline is 'Not Specified', empty, or cannot be parsed.
+    """
+    if not deadline_str or not isinstance(deadline_str, str):
+        return None
+    cleaned = deadline_str.strip()
+    if cleaned.lower() in ["not specified", "check portal", "check website", "n/a", "none"]:
+        return None
+
+    # Remove ordinal suffixes e.g., 6th -> 6, 1st -> 1, 2nd -> 2, 3rd -> 3
+    cleaned_no_ord = re.sub(r'(\d+)(st|nd|rd|th)\b', r'\1', cleaned, flags=re.IGNORECASE)
+
+    try:
+        from dateutil import parser
+        parsed_dt = parser.parse(cleaned_no_ord, fuzzy=True)
+        return parsed_dt.date()
+    except Exception:
+        pass
+    return None
+
+
+def get_deadline_validation_status(deadline_str: str) -> dict:
+    """
+    Calculates deadline validation status relative to today:
+    - 'green' / 🟢 Future: deadline is in the future (deadline_date > today)
+    - 'amber' / 🟡 Expiring Soon / Recent: deadline is within 7 days in the past or today (today - 7 days <= deadline_date <= today)
+    - 'red' / 🔴 Expired: deadline is >7 days in the past (deadline_date < today - 7 days)
+    - 'unknown' / ⚪ Not Specified: deadline date could not be parsed or is 'Not Specified'
+    """
+    deadline_date = parse_deadline_to_date(deadline_str)
+    if not deadline_date:
+        return {
+            'status': 'unknown',
+            'color': 'gray',
+            'label': '⚪ Not Specified',
+            'deadline_date': None,
+            'is_stale': False
+        }
+
+    from django.utils import timezone
+    today = timezone.now().date()
+    diff_days = (deadline_date - today).days
+
+    if deadline_date > today:
+        return {
+            'status': 'green',
+            'color': 'green',
+            'label': f"🟢 Future ({deadline_date.strftime('%d %B %Y')})",
+            'deadline_date': deadline_date.isoformat(),
+            'days_remaining': diff_days,
+            'is_stale': False
+        }
+    elif diff_days >= -7:
+        return {
+            'status': 'amber',
+            'color': 'amber',
+            'label': f"🟡 Expiring Soon / Recent ({deadline_date.strftime('%d %B %Y')})",
+            'deadline_date': deadline_date.isoformat(),
+            'days_remaining': diff_days,
+            'is_stale': False
+        }
+    else:
+        return {
+            'status': 'red',
+            'color': 'red',
+            'label': f"🔴 EXPIRED ({deadline_date.strftime('%d %B %Y')})",
+            'deadline_date': deadline_date.isoformat(),
+            'days_remaining': diff_days,
+            'is_stale': True
+        }
+
+
 def clean_html_to_text(html_content: str, content_type: str = '') -> str:
     """Normalize HTML by removing scripts, styles, navigation, footer, etc."""
     if not html_content:

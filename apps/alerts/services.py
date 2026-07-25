@@ -102,13 +102,34 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     logger.info(f"Alert queued as PENDING for human admin review (trust_score={trust_score}).")
 
     # 4. Extract and normalize recruitment data
-    from apps.monitor.parser import validate_and_sanitize_deadline
+    from apps.monitor.parser import validate_and_sanitize_deadline, get_deadline_validation_status
     extracted = ai_res.get('extracted', {})
     title = f"{agency.acronym} Recruitment Update Detected"
     # Prioritize matched_data (from scraper) over AI extraction, as it's more accurate
     raw_deadline = matched_data.get('deadline') or extracted.get('deadline') or ""
     deadline = validate_and_sanitize_deadline(raw_deadline)
     positions = matched_data.get('positions') or extracted.get('positions') or "Multiple Positions"
+
+    # Automatic Stale Deadline Check: If deadline is >7 days in the past, auto-reject and return None
+    deadline_val = get_deadline_validation_status(deadline)
+    if deadline_val.get('is_stale'):
+        from apps.alerts.models import RejectedDetection
+        reason_msg = (
+            f"AUTO REJECTED STALE DEADLINE: Extracted deadline '{deadline}' "
+            f"({deadline_val.get('label')}) is more than 7 days in the past."
+        )
+        logger.warning(f"Rejecting detection for {agency.acronym} portal '{portal.name}': {reason_msg}")
+        RejectedDetection.objects.create(
+            portal=portal,
+            agency=agency,
+            title=title,
+            deadline=deadline,
+            positions=positions,
+            status='AUTO REJECTED STALE DEADLINE',
+            reason=reason_msg,
+            raw_content_excerpt=content[:2000]
+        )
+        return None
     
     # 5. Generate fingerprint for deduplication
     fingerprint = generate_fingerprint(
