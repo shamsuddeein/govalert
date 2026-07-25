@@ -18,6 +18,11 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-build-time-placeholde
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 
+# Django admin URL path — keep secret, do not use 'admin/'.
+# Set to a UUID or random string in production. Empty = admin disabled.
+ADMIN_URL = config('ADMIN_URL', default='admin')
+
+
 # ─── Applications ──────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -51,6 +56,7 @@ INSTALLED_APPS = [
 # ─── Middleware ─────────────────────────────────────────────────────────────────
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'core.csp_middleware.ContentSecurityPolicyMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',

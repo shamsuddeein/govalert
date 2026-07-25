@@ -54,5 +54,5 @@ class TelegramWebhookView(View):
         return JsonResponse({'ok': True})
 
     def get(self, request, *args, **kwargs):
-        """Health check endpoint."""
-        return JsonResponse({'status': 'RecruitmentAlert webhook active'})
+        """Do not reveal webhook presence to GET probes."""
+        return HttpResponse(status=404)

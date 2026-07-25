@@ -4,6 +4,7 @@ import time
 import requests
 from django.conf import settings
 from core.exceptions import ScraperException
+from core.security import validate_outbound_url, MAX_RESPONSE_BYTES
 
 logger = logging.getLogger(__name__)
 
@@ -16,33 +17,74 @@ USER_AGENTS = [
 
 def _http_get_with_impersonation(url: str, headers: dict, timeout: int = 30):
     """
-    Attempt HTTP GET using curl_cffi with Chrome 124 browser impersonation (JA3/JA4 TLS signature spoofing).
-    Falls back to standard requests if curl_cffi is unavailable or fails with an environment issue.
+    Attempt HTTP GET using curl_cffi with Chrome 124 browser impersonation (JA3/JA4 TLS
+    signature spoofing). Falls back to standard requests if curl_cffi is unavailable.
+
+    TLS verification is ALWAYS enabled. Disabling verify=True would allow a
+    man-in-the-middle to serve fake content and bypass our change detection entirely.
+    Government portals with self-signed certs should add their CA to the system
+    trust store, not disable verification globally.
     """
+    # SSRF guard: validate before any network I/O.
+    validate_outbound_url(url)
+
     try:
         from curl_cffi import requests as curl_requests
         response = curl_requests.get(
             url,
             headers=headers,
             timeout=timeout,
-            verify=False,
+            verify=True,       # MUST be True — never disable TLS verification
             impersonate="chrome124",
             allow_redirects=True,
+            stream=True,       # stream to enforce size cap before reading
         )
+        # Enforce response size cap before loading body into memory.
+        # A 500MB HTML response from a malicious server would OOM-kill the worker.
+        content_bytes = b''
+        for chunk in response.iter_content(chunk_size=65536):
+            content_bytes += chunk
+            if len(content_bytes) > MAX_RESPONSE_BYTES:
+                raise ScraperException(
+                    f"Response from {url!r} exceeded {MAX_RESPONSE_BYTES // (1024*1024)}MB limit. Aborted."
+                )
+        response._content = content_bytes
         return response
+
+    except ScraperException:
+        raise
     except Exception as curl_err:
         logger.debug(f"curl_cffi impersonate failed for {url} ({curl_err}), falling back to standard requests.")
-        return requests.get(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True)
+
+        # Fallback: requests with streaming + size cap.
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=timeout,
+            verify=True,       # TLS verification always on
+            allow_redirects=True,
+            stream=True,
+        )
+        content_bytes = b''
+        for chunk in response.iter_content(chunk_size=65536):
+            content_bytes += chunk
+            if len(content_bytes) > MAX_RESPONSE_BYTES:
+                raise ScraperException(
+                    f"Response from {url!r} exceeded {MAX_RESPONSE_BYTES // (1024*1024)}MB limit. Aborted."
+                )
+        response._content = content_bytes
+        return response
 
 
 def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
     """
-    Fetch content from a portal URL using HTTP (with TLS browser impersonation), Playwright, or PDF parsing.
+    Fetch content from a portal URL using HTTP (with TLS browser impersonation),
+    Playwright, or PDF parsing.
     Returns: (raw_content_str, http_status_code, response_time_ms)
-    """
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    Every outbound request passes through the SSRF guard in
+    _http_get_with_impersonation before any network I/O occurs.
+    """
     headers = {
         'User-Agent': random.choice(USER_AGENTS),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -67,12 +109,15 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
             response_time_ms = int((time.time() - start_time) * 1000)
             content = response.text.replace('\x00', '') if response.text else ''
             return content, response.status_code, response_time_ms
+        except ScraperException:
+            raise
         except Exception as e:
             logger.warning(f"HTTP scrape failed for {url}: {e}")
             raise ScraperException(f"Failed to scrape {url}: {str(e)}")
 
     elif method == 'PLAYWRIGHT':
-        # Try fast curl_cffi HTTP impersonation first (bypasses Cloudflare & JS checks in ~500ms without spawning heavy Chromium)
+        # Try fast curl_cffi HTTP impersonation first (bypasses Cloudflare & JS checks
+        # in ~500ms without spawning heavy Chromium)
         try:
             response = _http_get_with_impersonation(url, headers=headers, timeout=20)
             if response.status_code == 200 and response.text and len(response.text) > 200:
@@ -80,10 +125,14 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
                 response_time_ms = int((time.time() - start_time) * 1000)
                 content = response.text.replace('\x00', '')
                 return content, 200, response_time_ms
+        except ScraperException:
+            raise
         except Exception as http_err:
             logger.debug(f"HTTP impersonation before Playwright failed for {url}: {http_err}")
 
-        # Fall back to Playwright headless browser if HTTP impersonation returned non-200
+        # Fall back to Playwright headless browser if HTTP impersonation returned non-200.
+        # The SSRF guard already ran above; we do not need to re-validate here
+        # because the URL is unchanged.
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
@@ -115,6 +164,8 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
 
             response_time_ms = int((time.time() - start_time) * 1000)
             return content.replace('\x00', '') if content else '', 200, response_time_ms
+        except ScraperException:
+            raise
         except Exception as e:
             logger.warning(f"PDF scrape failed/unavailable for {url}: {e}. Falling back to HTTP.")
             try:
@@ -123,6 +174,8 @@ def scrape_portal(url: str, method: str = 'HTTP') -> tuple[str, int, int]:
                 response_time_ms = int((time.time() - start_time) * 1000)
                 content = response.text.replace('\x00', '') if response.text else ''
                 return content, response.status_code, response_time_ms
+            except ScraperException:
+                raise
             except Exception as req_err:
                 raise ScraperException(f"PDF failed and fallback HTTP failed: {str(req_err)}")
 

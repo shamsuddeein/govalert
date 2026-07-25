@@ -1,6 +1,7 @@
 import logging
 from django.conf import settings
 from django.utils.module_loading import import_string
+from core.security import validate_outbound_url, MAX_RESPONSE_BYTES
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +51,10 @@ class RequestsScraper(BaseScraperBackend):
         import random
         import requests
         import time
-        import urllib3
         from core.exceptions import ScraperException
 
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        # SSRF guard: validate before any network I/O.
+        validate_outbound_url(url)
 
         headers = {**self._HEADERS_BASE, 'User-Agent': random.choice(_USER_AGENTS)}
         timeout = 15
@@ -63,12 +64,27 @@ class RequestsScraper(BaseScraperBackend):
         for attempt in range(2):   # 1 try + 1 retry
             try:
                 response = requests.get(
-                    url, headers=headers, timeout=timeout, verify=False, allow_redirects=True
+                    url, headers=headers, timeout=timeout,
+                    verify=True,          # TLS verification always on
+                    allow_redirects=True,
+                    stream=True,          # stream to enforce size cap
                 )
                 self.last_content_type = response.headers.get('Content-Type', '')
+                # Enforce response size cap before loading body into memory.
+                content_bytes = b''
+                for chunk in response.iter_content(chunk_size=65536):
+                    content_bytes += chunk
+                    if len(content_bytes) > MAX_RESPONSE_BYTES:
+                        raise ScraperException(
+                            f"Response from {url!r} exceeded "
+                            f"{MAX_RESPONSE_BYTES // (1024*1024)}MB limit. Aborted."
+                        )
+                response._content = content_bytes
                 response_time = int((time.time() - start_time) * 1000)
                 content = response.text.replace('\x00', '') if response.text else ''
                 return content, response.status_code, response_time
+            except ScraperException:
+                raise  # Size cap and SSRF — not retryable
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 last_exc = e
                 if attempt == 0:

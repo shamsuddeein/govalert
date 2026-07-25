@@ -44,8 +44,27 @@ from apps.subscriptions.models import KeywordSubscription
 logger = logging.getLogger(__name__)
 
 
-class KeywordSubscriptionThrottle(AnonRateThrottle):
+class BaseSecurityThrottle(AnonRateThrottle):
+    def allow_request(self, request, view):
+        if getattr(settings, 'TESTING', False):
+            return True
+        return super().allow_request(request, view)
+
+
+class KeywordSubscriptionThrottle(BaseSecurityThrottle):
     rate = '5/hour'
+
+
+class AdminLoginThrottle(BaseSecurityThrottle):
+    rate = '5/min'
+
+
+class VerificationThrottle(BaseSecurityThrottle):
+    rate = '15/min'
+
+
+class AuthThrottle(BaseSecurityThrottle):
+    rate = '5/min'
 
 
 class KeywordSubscriptionView(APIView):
@@ -349,6 +368,7 @@ class JobVerificationView(APIView):
     confidence score, red flags, confidence factors, and detection timeline.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [VerificationThrottle]
 
     def get(self, request, ref):
         from apps.alerts.models import Alert, AlertStatus
@@ -417,6 +437,7 @@ class JobAiSummaryView(APIView):
     - Dynamic Trust Score
     """
     permission_classes = [AllowAny]
+    throttle_classes = [VerificationThrottle]
 
     def get(self, request, ref):
         from apps.alerts.models import Alert, AlertStatus
@@ -848,6 +869,7 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 class EmailTokenObtainPairView(TokenObtainPairView):
     """Accept email + password instead of username + password."""
     serializer_class = EmailTokenObtainPairSerializer
+    throttle_classes = [AuthThrottle]
 
 
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -865,6 +887,7 @@ class RegisterView(APIView):
     Creates a new user account and returns access & refresh tokens.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [AuthThrottle]
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -1024,11 +1047,15 @@ from django.contrib.auth import authenticate
 class CustomAdminLoginView(APIView):
     """
     POST /api/v1/admin/auth/login/
-    Validates auth.User with is_staff=True.
+    Validates staff user credentials.
     Returns access & refresh tokens + user info.
-    If user exists but is_staff=False, returns 403 Forbidden.
+
+    SECURITY: Returns generic 401 error for ALL authentication failures
+    (invalid user, wrong password, non-staff user) to prevent account enumeration.
+    Rate limited to 5 attempts per minute per IP.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [AdminLoginThrottle]
 
     def post(self, request):
         identifier = (request.data.get('username') or request.data.get('email') or '').strip()
@@ -1043,30 +1070,18 @@ class CustomAdminLoginView(APIView):
         from django.contrib.auth.models import User
         user_obj = User.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier)).first()
 
-        if not user_obj:
-            return Response(
-                {'detail': 'Invalid email/username or password.'},
-                status=http_status.HTTP_401_UNAUTHORIZED
-            )
+        # Constant response pattern to prevent user/staff enumeration
+        invalid_resp = Response(
+            {'detail': 'Invalid credentials or non-staff account.'},
+            status=http_status.HTTP_401_UNAUTHORIZED
+        )
 
-        if not user_obj.is_staff:
-            return Response(
-                {'detail': 'Staff credentials required to access the admin portal.'},
-                status=http_status.HTTP_403_FORBIDDEN
-            )
+        if not user_obj:
+            return invalid_resp
 
         user = authenticate(request, username=user_obj.username, password=password)
-        if not user:
-            return Response(
-                {'detail': 'Invalid email/username or password.'},
-                status=http_status.HTTP_401_UNAUTHORIZED
-            )
-
-        if not user.is_staff:
-            return Response(
-                {'detail': 'Staff credentials required to access the admin portal.'},
-                status=http_status.HTTP_403_FORBIDDEN
-            )
+        if not user or not user.is_staff:
+            return invalid_resp
 
         refresh = RefreshToken.for_user(user)
         return Response({

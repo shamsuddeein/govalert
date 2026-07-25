@@ -437,6 +437,7 @@ def handle_settings(message: dict):
 
 
 def handle_search(message: dict):
+    import html
     from apps.notifications.sender import send_message
     chat_id = message['chat']['id']
     # Extract keyword after /search command
@@ -445,6 +446,8 @@ def handle_search(message: dict):
         send_message(chat_id=chat_id, text="Usage: /search [keyword]\nExample: /search customs")
         return
     keyword = parts[1].strip()[:200]
+    safe_keyword = html.escape(keyword)
+
     from apps.alerts.models import Alert, AlertStatus
     from apps.bot.templates import format_alert_brief
     results = Alert.objects.filter(
@@ -453,12 +456,12 @@ def handle_search(message: dict):
         title__icontains=keyword
     ).order_by('-updated_at')[:10]
     if not results:
-        send_message(chat_id=chat_id, text=f"No results for <b>{keyword}</b>", parse_mode='HTML')
+        send_message(chat_id=chat_id, text=f"No results for <b>{safe_keyword}</b>", parse_mode='HTML')
         return
-    
+
     formatted_alerts = [f"{i}. {format_alert_brief(alert)}" for i, alert in enumerate(results, 1)]
     divider = "\n\n"
-    text = f"<b>Results for '{keyword}'</b>\n\n" + divider.join(formatted_alerts)
+    text = f"<b>Results for '{safe_keyword}'</b>\n\n" + divider.join(formatted_alerts)
     send_message(chat_id=chat_id, text=text, parse_mode='HTML')
 
 

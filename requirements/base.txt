@@ -1,7 +1,7 @@
 # ─── Core Framework ────────────────────────────────────────────────────────────
-Django==4.2.16
+Django==4.2.30
 djangorestframework==3.15.2
-djangorestframework-simplejwt==5.3.1
+djangorestframework-simplejwt==5.5.0
 django-cors-headers==4.4.0
 
 # ─── Scheduler (Phase 1 — no Redis/Celery needed) ──────────────────────────────
@@ -12,10 +12,10 @@ django-apscheduler==0.7.0
 python-telegram-bot==20.7
 
 # ─── Scraping ──────────────────────────────────────────────────────────────────
-requests==2.31.0
+requests==2.32.3
 curl_cffi>=0.7.0
 beautifulsoup4==4.12.3
-lxml==5.2.2
+lxml==6.1.0
 playwright==1.44.0
 
 # ─── PDF Parsing ───────────────────────────────────────────────────────────────
@@ -27,10 +27,10 @@ google-generativeai==0.7.2
 # ─── Utilities ─────────────────────────────────────────────────────────────────
 python-decouple==3.8
 structlog==24.2.0
-bleach==6.1.0
+bleach==6.4.0
 
 # ─── Auth ──────────────────────────────────────────────────────────────────────
-PyJWT==2.8.0
+PyJWT==2.10.1
 pyotp==2.9.0
 
 # ─── Celery & Redis ────────────────────────────────────────────────────────────

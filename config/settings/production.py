@@ -7,18 +7,29 @@ from .base import *  # noqa
 
 DEBUG = False
 
-# ALLOWED_HOSTS in production — defaults to wildcard for Railway/Render container domains.
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())  # noqa: F405 — config/Csv imported via base *
+# ALLOWED_HOSTS in production — require explicit value, fail hard if missing/wildcard
+raw_allowed_hosts = config('ALLOWED_HOSTS', default='', cast=Csv())
+if not raw_allowed_hosts or '*' in raw_allowed_hosts:
+    import django.core.exceptions
+    raise django.core.exceptions.ImproperlyConfigured(
+        "ALLOWED_HOSTS must be explicitly configured with specific domains in production. Wildcards or empty values are forbidden."
+    )
+ALLOWED_HOSTS = raw_allowed_hosts
 
 # ─── Security Headers ──────────────────────────────────────────────────────────
-SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Strict'
 CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Strict'
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='https://recruitmentalert.com.ng,https://www.recruitmentalert.com.ng', cast=Csv())
 X_FRAME_OPTIONS = 'DENY'
 
 # ─── Logging — Production ──────────────────────────────────────────────────────
