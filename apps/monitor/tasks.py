@@ -78,7 +78,9 @@ def portal_check(self, portal_id: int):
 
         content = content.replace('\x00', '') if content else ''
         content_type = getattr(scraper, 'last_content_type', '')
-        success = True
+        # HTTP 200 (2xx/3xx) must always result in ONLINE status (unless explicit CAPTCHA).
+        # OFFLINE status triggers ONLY on HTTP status codes 4xx, 5xx, timeouts, connection refused, or DNS failures.
+        success = (200 <= status_code < 400)
     except SoftTimeLimitExceeded:
         logger.warning(f"Soft time limit exceeded for portal {portal.name} ({portal.url}). Aborting check.")
         raise
@@ -120,7 +122,7 @@ def portal_check(self, portal_id: int):
         portal.save(update_fields=['last_checked_at', 'status', 'health_status', 'is_active', 'notes'])
         return
 
-    if not success:
+    if not success or status_code >= 400:
         portal.consecutive_failures += 1
         portal.check_interval_minutes = portal.calculate_backoff_interval_minutes()
         portal.poll_interval = portal.check_interval_minutes * 60

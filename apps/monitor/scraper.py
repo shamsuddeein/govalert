@@ -134,7 +134,7 @@ def scrape_portal(url: str, method: str = 'HTTP', is_blocked: bool = False, cust
         # in ~500ms without spawning heavy Chromium)
         try:
             response = _http_get_with_impersonation(url, headers=headers, timeout=20)
-            if response.status_code == 200 and response.text and len(response.text) > 200:
+            if response.status_code == 200:
                 scrape_portal.last_content_type = response.headers.get('Content-Type', '')
                 response_time_ms = int((time.time() - start_time) * 1000)
                 content = response.text.replace('\x00', '')
