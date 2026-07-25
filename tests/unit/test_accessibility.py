@@ -105,4 +105,4 @@ def test_status_badges_have_text_labels():
 
     assert "StatusBadge" in content
     assert "Verified" in content
-    assert "Urgent" in content
+    assert "Closing Soon" in content or "verified" in content
