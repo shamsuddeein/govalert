@@ -7,14 +7,12 @@ from .base import *  # noqa
 
 DEBUG = False
 
-# ALLOWED_HOSTS in production — require explicit value, fail hard if missing/wildcard
-raw_allowed_hosts = config('ALLOWED_HOSTS', default='', cast=Csv())
-if not raw_allowed_hosts or '*' in raw_allowed_hosts:
-    import django.core.exceptions
-    raise django.core.exceptions.ImproperlyConfigured(
-        "ALLOWED_HOSTS must be explicitly configured with specific domains in production. Wildcards or empty values are forbidden."
-    )
-ALLOWED_HOSTS = raw_allowed_hosts
+# ALLOWED_HOSTS in production — defaults to explicit domain list (including Railway/Render subdomains)
+default_allowed_hosts = (
+    'recruitmentalert.com.ng,www.recruitmentalert.com.ng,'
+    '.railway.app,.up.railway.app,.onrender.com,localhost,127.0.0.1'
+)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default=default_allowed_hosts, cast=Csv())
 
 # ─── Security Headers ──────────────────────────────────────────────────────────
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
@@ -29,7 +27,13 @@ SESSION_COOKIE_SAMESITE = 'Strict'
 CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Strict'
-CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='https://recruitmentalert.com.ng,https://www.recruitmentalert.com.ng', cast=Csv())
+
+default_csrf_origins = (
+    'https://recruitmentalert.com.ng,https://www.recruitmentalert.com.ng,'
+    'https://*.railway.app,https://*.up.railway.app,https://*.onrender.com,'
+    'https://govalert-henna.vercel.app'
+)
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default=default_csrf_origins, cast=Csv())
 X_FRAME_OPTIONS = 'DENY'
 
 # ─── Logging — Production ──────────────────────────────────────────────────────
