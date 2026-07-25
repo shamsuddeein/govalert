@@ -184,7 +184,7 @@ AGENCIES = [
         'acronym': 'CREDICORP',
         'category': 'FINANCE',
         'official_domains': ['credicorp.ng'],
-        'portal_url': 'https://credicorp.ng',
+        'portal_url': 'https://credicorp.ng/careers',
         'description': 'CREDICORP facilitates consumer credit access for working Nigerians.',
         'vetted_score': 90,
         'priority': 'HIGH',
