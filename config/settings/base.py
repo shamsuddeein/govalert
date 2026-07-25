@@ -66,6 +66,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.VisitorTrackingMiddleware',
+    'core.middleware.APMMiddleware',
 ]
 
 DEMO_MODE = False
@@ -243,6 +244,29 @@ LOGGING = {
         'apscheduler': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
     },
 }
+
+# ─── Sentry Error & APM Tracking ───────────────────────────────────────────────
+SENTRY_DSN = config('SENTRY_DSN', default='')
+SENTRY_ENVIRONMENT = config('SENTRY_ENVIRONMENT', default='development' if DEBUG else 'production')
+
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        integrations=[
+            DjangoIntegration(),
+            CeleryIntegration(),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+        ],
+        traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.2 if DEBUG else 0.05, cast=float),
+        profiles_sample_rate=config('SENTRY_PROFILES_SAMPLE_RATE', default=0.1, cast=float),
+        send_default_pii=False,
+    )
 
 # ─── Telegram Bot ──────────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = config('TELEGRAM_BOT_TOKEN', default='')

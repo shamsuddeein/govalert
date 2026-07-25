@@ -96,3 +96,54 @@ class VisitorTrackingMiddleware:
         except Exception:
             cache.set("all_time_visitors_count", 1, timeout=None)
 
+
+class APMMiddleware:
+    """
+    Application Performance Monitoring (APM) & Structured Logging Middleware.
+    Tracks wall-clock execution time (ms) and SQL query counts for every request.
+    Emits structured logs and flags views exceeding 500ms threshold.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        import time
+        import json
+        from django.db import connection
+
+        start_time = time.perf_counter()
+        initial_queries = len(connection.queries) if settings.DEBUG else 0
+
+        response = self.get_response(request)
+
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        final_queries = len(connection.queries) if settings.DEBUG else 0
+        db_queries = final_queries - initial_queries
+
+        log_data = {
+            'timestamp': timezone.now().isoformat(),
+            'component': 'web',
+            'method': request.method,
+            'path': request.path,
+            'status_code': response.status_code,
+            'duration_ms': round(duration_ms, 2),
+            'db_queries': db_queries,
+        }
+
+        # Exclude static/media from APM logging noise
+        if not (request.path.startswith('/static/') or request.path.startswith('/media/')):
+            if duration_ms > 500.0:
+                logger.warning(
+                    f"SLOW VIEW DETECTED: {request.method} {request.path} "
+                    f"took {duration_ms:.2f}ms (>500ms threshold) — DB Queries: {db_queries}",
+                    extra={'structured_log': json.dumps(log_data)}
+                )
+            else:
+                logger.info(
+                    f"APM {request.method} {request.path} {response.status_code} "
+                    f"in {duration_ms:.2f}ms (DB Queries: {db_queries})",
+                    extra={'structured_log': json.dumps(log_data)}
+                )
+
+        return response
+

@@ -88,10 +88,42 @@ def _handle_message(message: dict) -> None:
 
     handler = handlers.get(command)
     if handler:
+        import time
+        import json
+        from django.utils import timezone
+
+        user_id = message.get('from', {}).get('id', 'unknown')
+        t0 = time.perf_counter()
         try:
             handler(message)
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log_payload = {
+                'timestamp': timezone.now().isoformat(),
+                'component': 'bot',
+                'command': command,
+                'user_id': user_id,
+                'duration_ms': round(duration_ms, 2),
+                'status': 'success'
+            }
+            logger.info(
+                f"BOT_COMMAND command={command} user_id={user_id} status=success in {duration_ms:.2f}ms",
+                extra={'structured_log': json.dumps(log_payload)}
+            )
         except Exception as exc:
-            logger.exception(f"Handler error for command {command}: {exc}")
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            log_payload = {
+                'timestamp': timezone.now().isoformat(),
+                'component': 'bot',
+                'command': command,
+                'user_id': user_id,
+                'duration_ms': round(duration_ms, 2),
+                'status': 'error',
+                'error': str(exc)
+            }
+            logger.exception(
+                f"BOT_COMMAND ERROR command={command} user_id={user_id}: {exc}",
+                extra={'structured_log': json.dumps(log_payload)}
+            )
             _send_error_reply(message)
     else:
         # Unknown command or plain text — ignore gracefully
