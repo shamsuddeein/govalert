@@ -249,6 +249,11 @@ LOGGING = {
 SENTRY_DSN = config('SENTRY_DSN', default='')
 SENTRY_ENVIRONMENT = config('SENTRY_ENVIRONMENT', default='development' if DEBUG else 'production')
 
+# ─── Web Push VAPID Configuration ─────────────────────────────────────────────
+VAPID_PUBLIC_KEY = config('VAPID_PUBLIC_KEY', default='BEl62iUYgUivxIkv69yViEuiBIa1-A1J9s3kK3yP1N2_vH3v_rK2A0Z0J_7R9a1x_B2u4E5F6G7H8I9J0K1L2M3')
+VAPID_PRIVATE_KEY = config('VAPID_PRIVATE_KEY', default='x1y2z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S')
+VAPID_ADMIN_EMAIL = config('VAPID_ADMIN_EMAIL', default='mailto:admin@recruitmentalert.com.ng')
+
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration

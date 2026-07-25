@@ -72,3 +72,33 @@ class Notification(models.Model):
         self.error_message = error[:1000]
         self.failed_at = timezone.now()
         self.save(update_fields=['status', 'error_message', 'failed_at'])
+
+
+class PushSubscription(models.Model):
+    """
+    Web Push Subscription endpoint and cryptographic keys (p256dh, auth).
+    Used to send instant browser push notifications for verified recruitments.
+    """
+    endpoint = models.URLField(max_length=1024, unique=True, db_index=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    user = models.ForeignKey(
+        'accounts.WebUser',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='push_subscriptions',
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    user_agent = models.CharField(max_length=512, blank=True, default='')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'push_subscriptions'
+        ordering = ['-created_at']
+        verbose_name = 'Push Subscription'
+        verbose_name_plural = 'Push Subscriptions'
+
+    def __str__(self):
+        return f"PushSubscription → {self.endpoint[:40]}... (Active={self.is_active})"
+

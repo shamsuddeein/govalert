@@ -201,4 +201,32 @@ def dispatch_alert(alert_id: int):
         # Global Telegram rate limit is 30 msg/sec; sleep 34ms per send.
         time.sleep(0.034)
 
+    # Trigger Web Push API notification dispatch to all browser subscribers
+    try:
+        dispatch_web_push_notification_task.delay(
+            title=f"New Verified Opening: {alert.title[:45]}",
+            body=f"{alert.agency.name} ({alert.agency.acronym}) — Verified recruitment update.",
+            url=f"/jobs/{alert.ref or alert.id}",
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to queue Web Push notification task: {exc}")
+
     logger.info(f"Dispatch complete for alert {alert_id}: {success_count} sent, {failure_count} failed.")
+
+
+@shared_task(ignore_result=True)
+def dispatch_web_push_notification_task(title: str, body: str, url: str = '/jobs', icon: str = '/icon-192x192.png'):
+    """
+    Celery task to broadcast Web Push notifications to all active PWA subscribers.
+    Runs asynchronously following new verified recruitment publication.
+    """
+    from apps.notifications.push_service import broadcast_push_notification
+    logger.info(f"Executing web push broadcast task: '{title}'...")
+    try:
+        res = broadcast_push_notification(title=title, body=body, url=url, icon=icon)
+        logger.info(f"Web push broadcast finished: {res}")
+        return res
+    except Exception as exc:
+        logger.error(f"Error in web push broadcast task: {exc}", exc_info=True)
+        return None
+

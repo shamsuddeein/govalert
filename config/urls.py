@@ -6,6 +6,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from apps.accounts.forms import EmailAdminAuthenticationForm
+from core import pwa_views
 
 admin.site.login_form = EmailAdminAuthenticationForm
 
@@ -29,6 +30,11 @@ urlpatterns = [
 
     # REST API
     path('api/', include('apps.api.urls')),
+
+    # Root Progressive Web App (PWA) Endpoints
+    path('service-worker.js', pwa_views.service_worker_view, name='pwa_service_worker'),
+    path('manifest.json', pwa_views.manifest_view, name='pwa_manifest'),
+    path('offline.html', pwa_views.offline_view, name='pwa_offline'),
 ]
 
 # Only register the admin URL if ADMIN_URL is configured.

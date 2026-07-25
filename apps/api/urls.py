@@ -64,6 +64,11 @@ public_patterns = [
 
     # Keyword Subscriptions
     path('keyword-subscriptions/', views.KeywordSubscriptionView.as_view(), name='keyword_subscriptions'),
+
+    # Web Push API (PWA)
+    path('push/vapid-key/', views.VapidKeyView.as_view(), name='push_vapid_key'),
+    path('push/subscribe/', views.PushSubscribeView.as_view(), name='push_subscribe'),
+    path('push/unsubscribe/', views.PushUnsubscribeView.as_view(), name='push_unsubscribe'),
 ]
 
 # ── Admin v1 ──────────────────────────────────────────────────────────────────

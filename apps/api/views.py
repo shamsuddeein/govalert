@@ -2324,6 +2324,84 @@ class CustomAdminPortalTriggerCheckAllView(APIView):
         })
 
 
+class VapidKeyView(APIView):
+    """
+    GET /api/v1/push/vapid-key/
+    Returns the server's public VAPID key for Web Push subscription.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from apps.notifications.push_service import get_vapid_public_key
+        return Response({'public_key': get_vapid_public_key()})
+
+
+class PushSubscribeView(APIView):
+    """
+    POST /api/v1/push/subscribe/
+    Accepts PWA service worker push subscription payload (endpoint, keys.p256dh, keys.auth)
+    and persists it in the PushSubscription database.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from apps.notifications.models import PushSubscription
+        from apps.accounts.models import WebUser
+        data = request.data
+        endpoint = data.get('endpoint')
+        keys = data.get('keys', {})
+        p256dh = keys.get('p256dh')
+        auth = keys.get('auth')
+
+        if not endpoint or not p256dh or not auth:
+            return Response(
+                {'detail': 'Invalid subscription payload. Required fields: endpoint, keys.p256dh, keys.auth.'},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        web_user = request.user if request.user.is_authenticated and isinstance(request.user, WebUser) else None
+        user_agent = request.META.get('HTTP_USER_AGENT', '')[:512]
+
+        sub, created = PushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={
+                'p256dh': p256dh,
+                'auth': auth,
+                'user': web_user,
+                'is_active': True,
+                'user_agent': user_agent,
+            }
+        )
+
+        return Response({
+            'status': 'subscribed',
+            'detail': 'Web Push subscription successfully registered.',
+            'created': created,
+            'id': sub.id,
+        }, status=http_status.HTTP_201_CREATED if created else http_status.HTTP_200_OK)
+
+
+class PushUnsubscribeView(APIView):
+    """
+    POST /api/v1/push/unsubscribe/
+    Removes a PushSubscription record by endpoint URL.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from apps.notifications.models import PushSubscription
+        endpoint = request.data.get('endpoint')
+        if not endpoint:
+            return Response({'detail': 'Endpoint is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        deleted_count, _ = PushSubscription.objects.filter(endpoint=endpoint).delete()
+        return Response({
+            'status': 'unsubscribed',
+            'detail': f"Removed {deleted_count} subscription(s)."
+        })
+
+
+
 
 
 
