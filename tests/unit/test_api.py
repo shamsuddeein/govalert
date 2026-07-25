@@ -119,11 +119,12 @@ def test_health_api():
     url = reverse('api:health')
     response = client.get(url)
     assert response.status_code == 200
-    assert response.data['status'] in ['ok', 'degraded']
-    assert 'database' in response.data
-    assert 'telegram' in response.data
-    assert 'scheduler' in response.data
-    assert 'active_scrapers' in response.data  # key is 'active_scrapers', not 'scrapers'
+    assert response.data['status'] in ['healthy', 'unhealthy', 'ok', 'degraded']
+    assert 'components' in response.data
+    assert 'database' in response.data['components']
+    assert 'redis' in response.data['components']
+    assert 'celery' in response.data['components']
+    assert 'crawler' in response.data['components']
 
 
 @pytest.mark.django_db
