@@ -107,7 +107,7 @@ def test_pending_alert_coalescing_and_deadline_flapping(mock_ai):
     mock_ai.return_value = {
         'classification': 'REAL', 'confidence': 70,
         'event_type': 'RECRUITMENT_OPEN', 'red_flags': [],
-        'extracted': {'positions': 'Multiple Positions', 'deadline': '6TH APRIL 2026', 'requirements': 'Check portal'},
+        'extracted': {'positions': 'Multiple Positions', 'deadline': '30TH AUGUST 2026', 'requirements': 'Check portal'},
     }
     agency = Agency.objects.create(name='Federal Ministry of Interior', acronym='FMI', official_domains=['interior.gov.ng'])
     portal = Portal.objects.create(agency=agency, name='FMI Portal', url='https://interior.gov.ng')
@@ -115,7 +115,7 @@ def test_pending_alert_coalescing_and_deadline_flapping(mock_ai):
     # Scrape 1: Creates initial PENDING alert
     alert1 = create_alert_from_scrape(
         portal, 'FMI recruitment notice. Apply online.',
-        {'positions': 'Multiple Positions', 'deadline': '6TH APRIL 2026'}
+        {'positions': 'Multiple Positions', 'deadline': '30TH AUGUST 2026'}
     )
     assert alert1.status == AlertStatus.PENDING
     assert Alert.objects.filter(portal=portal, status=AlertStatus.PENDING).count() == 1
@@ -129,7 +129,7 @@ def test_pending_alert_coalescing_and_deadline_flapping(mock_ai):
 
     assert alert2.pk == alert1.pk
     assert Alert.objects.filter(portal=portal, status=AlertStatus.PENDING).count() == 1
-    # Deadline should be preserved as 6TH APRIL 2026
+    # Deadline should be preserved as 30TH AUGUST 2026
     alert2.refresh_from_db()
-    assert alert2.deadline == '6TH APRIL 2026'
+    assert alert2.deadline == '30TH AUGUST 2026'
 
