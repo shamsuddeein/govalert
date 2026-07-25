@@ -76,6 +76,8 @@ admin_patterns = [
     # Alert Review Queue
     path('alerts/', views.CustomAdminAlertListView.as_view(), name='admin_alert_list'),
     path('alerts/stats/', views.CustomAdminAlertStatsView.as_view(), name='admin_alert_stats'),
+    # Deduplication reconcile — POST only, explicit operator action
+    path('alerts/reconcile/', views.CustomAdminAlertReconcileView.as_view(), name='admin_alert_reconcile'),
     path('alerts/<int:pk>/approve/', views.CustomAdminAlertApproveView.as_view(), name='admin_alert_approve'),
     path('alerts/<int:pk>/reject/', views.CustomAdminAlertRejectView.as_view(), name='admin_alert_reject'),
     path('alerts/<int:pk>/hold/', views.CustomAdminAlertHoldView.as_view(), name='admin_alert_hold'),

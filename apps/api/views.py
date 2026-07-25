@@ -94,6 +94,15 @@ class KeywordSubscriptionView(APIView):
 SYSTEM_STATUS_CACHE_KEY = 'api_system_status_v1'
 SYSTEM_STATUS_CACHE_TTL = 60  # seconds
 
+HEALTH_CACHE_KEY = 'api_health_v1'
+HEALTH_CACHE_TTL = 30  # seconds — load balancer pings frequently; 30s is sufficient
+
+ADMIN_STATS_CACHE_KEY = 'api_admin_stats_v1'
+ADMIN_STATS_CACHE_TTL = 120  # seconds — admin stats don't need sub-second freshness
+
+AGENCY_LIST_CACHE_KEY = 'api_agency_list_v1'
+AGENCY_LIST_CACHE_TTL = 60  # seconds — same TTL as system status
+
 
 # ─── Pagination ────────────────────────────────────────────────────────────────
 
@@ -139,6 +148,16 @@ class AgencyListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        # Cache the full sorted+paginated agency list. It changes only when a
+        # portal status flips (every few minutes at most) so 60s is safe.
+        # Key includes page/page_size so different pagination slices don't collide.
+        page_num = request.query_params.get('page', '1')
+        page_size = request.query_params.get('page_size', '20')
+        cache_key = f"{AGENCY_LIST_CACHE_KEY}:{page_num}:{page_size}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
         from apps.agencies.models import Agency, Portal
 
         agencies = list(Agency.objects.filter(is_active=True).prefetch_related(
@@ -164,7 +183,9 @@ class AgencyListView(APIView):
         paginator = StandardPagination()
         page = paginator.paginate_queryset(agencies, request)
         serializer = AgencyListSerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        response = paginator.get_paginated_response(serializer.data)
+        cache.set(cache_key, response.data, AGENCY_LIST_CACHE_TTL)
+        return response
 
 
 class AgencyDetailView(APIView):
@@ -558,16 +579,16 @@ class LiveFeedView(APIView):
 # ─── Health Endpoint ───────────────────────────────────────────────────────────
 
 class HealthView(APIView):
-    """Simple health endpoint for uptime checks and load balancer pings."""
+    """Simple health endpoint for uptime checks and load balancer pings.
+
+    Cached for 30 seconds.  The DB connectivity check bypasses the cache so
+    we always confirm the DB is reachable on each actual check cycle.
+    """
     permission_classes = [AllowAny]
 
     def get(self, request):
-        from apps.monitor.models import Snapshot
-        from apps.alerts.models import Alert, DecisionLog
-        from apps.notifications.models import Notification, NotificationStatus
-
+        # Always probe DB liveness — this is the one thing we can't cache.
         data = {'status': 'ok'}
-
         try:
             with connection.cursor() as cur:
                 cur.execute('SELECT 1')
@@ -575,6 +596,17 @@ class HealthView(APIView):
         except Exception:
             data['database'] = 'unavailable'
             data['status'] = 'degraded'
+
+        # Return cached metrics if available; DB is already checked above.
+        cached = cache.get(HEALTH_CACHE_KEY)
+        if cached is not None:
+            cached['database'] = data['database']
+            cached['status'] = data['status'] if data['status'] == 'degraded' else cached.get('status', 'ok')
+            return Response(cached)
+
+        from apps.monitor.models import Snapshot
+        from apps.alerts.models import Alert, DecisionLog
+        from apps.notifications.models import Notification, NotificationStatus
 
         bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '')
         data['telegram'] = 'configured' if bot_token else 'not_configured'
@@ -595,24 +627,28 @@ class HealthView(APIView):
             data['active_scrapers'] = 0
 
         try:
+            from django.db.models import Count, Q
             today = timezone.now().date()
+            snap_agg = Snapshot.objects.aggregate(
+                total=Count('id'),
+                successful=Count('id', filter=Q(status_code__lt=400)),
+                avg_ms=Avg('response_time_ms', filter=Q(response_time_ms__isnull=False)),
+            )
             data['metrics'] = {
-                'total_scrapes': Snapshot.objects.count(),
-                'successful_scrapes': Snapshot.objects.filter(status_code__lt=400).count(),
+                'total_scrapes': snap_agg['total'],
+                'successful_scrapes': snap_agg['successful'],
                 'alerts_today': Alert.objects.filter(created_at__date=today).count(),
                 'notifications_sent_today': Notification.objects.filter(
                     status=NotificationStatus.SENT, sent_at__date=today
                 ).count(),
-                'avg_response_ms': int(
-                    Snapshot.objects.filter(response_time_ms__isnull=False)
-                    .aggregate(Avg('response_time_ms'))['response_time_ms__avg'] or 0
-                ),
+                'avg_response_ms': int(snap_agg['avg_ms'] or 0),
                 'queue_length': Notification.objects.filter(status=NotificationStatus.QUEUED).count(),
                 'duplicate_events_skipped': cache.get('metrics_duplicate_events_skipped', 0),
             }
         except Exception as e:
             data['metrics'] = {'error': str(e)}
 
+        cache.set(HEALTH_CACHE_KEY, data, HEALTH_CACHE_TTL)
         return Response(data)
 
 
@@ -737,40 +773,65 @@ class AdminStatsView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        # Admin stats are cached for 120 seconds.  The admin panel doesn't
+        # need sub-second freshness, and the 10 queries this fires are expensive.
+        cached = cache.get(ADMIN_STATS_CACHE_KEY)
+        if cached is not None:
+            return Response(cached)
+
         from apps.accounts.models import TelegramUser
         from apps.alerts.models import Alert, DecisionLog
         from apps.agencies.models import Agency
         from apps.monitor.models import Snapshot
         from apps.notifications.models import Notification, NotificationStatus
+        from django.db.models import Count, Q
 
         today = timezone.now().date()
-
         from core.utils import get_visitor_telemetry
-        avg_ms = Snapshot.objects.filter(
-            response_time_ms__isnull=False
-        ).aggregate(Avg('response_time_ms'))['response_time_ms__avg']
+
+        # Collapse multiple Snapshot queries into one aggregate.
+        snap_agg = Snapshot.objects.aggregate(
+            total=Count('id'),
+            successful=Count('id', filter=Q(status_code__lt=400)),
+            failed=Count('id', filter=Q(status_code__gte=400)),
+            avg_ms=Avg('response_time_ms', filter=Q(response_time_ms__isnull=False)),
+        )
+
+        # Collapse TelegramUser queries.
+        user_agg = TelegramUser.objects.aggregate(
+            total=Count('id'),
+            active=Count('id', filter=Q(state='ACTIVE')),
+        )
+
+        # Collapse DecisionLog queries.
+        decision_agg = DecisionLog.objects.aggregate(
+            ai=Count('id', filter=Q(reason__icontains='Gemini AI')),
+            rule=Count('id', filter=Q(reason__icontains='Rule Engine Fallback')),
+        )
 
         visitor_stats = get_visitor_telemetry()
 
-        return Response({
+        data = {
             'visitor_stats': visitor_stats,
-            'total_users': TelegramUser.objects.count(),
-            'active_users': TelegramUser.objects.filter(state='ACTIVE').count(),
+            'total_users': user_agg['total'],
+            'active_users': user_agg['active'],
             'total_agencies': Agency.objects.filter(is_active=True).count(),
             'total_alerts': Alert.objects.count(),
-            'total_scrapes': Snapshot.objects.count(),
-            'successful_scrapes': Snapshot.objects.filter(status_code__lt=400).count(),
-            'failed_scrapes': Snapshot.objects.filter(status_code__gte=400).count(),
+            'total_scrapes': snap_agg['total'],
+            'successful_scrapes': snap_agg['successful'],
+            'failed_scrapes': snap_agg['failed'],
             'alerts_generated_today': Alert.objects.filter(created_at__date=today).count(),
             'notifications_sent_today': Notification.objects.filter(
                 status=NotificationStatus.SENT, sent_at__date=today
             ).count(),
             'duplicate_events_skipped': cache.get('metrics_duplicate_events_skipped', 0),
-            'ai_decisions_made': DecisionLog.objects.filter(reason__icontains='Gemini AI').count(),
-            'rule_engine_decisions_made': DecisionLog.objects.filter(reason__icontains='Rule Engine Fallback').count(),
-            'average_scrape_duration_ms': int(avg_ms) if avg_ms else 0,
+            'ai_decisions_made': decision_agg['ai'],
+            'rule_engine_decisions_made': decision_agg['rule'],
+            'average_scrape_duration_ms': int(snap_agg['avg_ms']) if snap_agg['avg_ms'] else 0,
             'queue_length': Notification.objects.filter(status=NotificationStatus.QUEUED).count(),
-        })
+        }
+        cache.set(ADMIN_STATS_CACHE_KEY, data, ADMIN_STATS_CACHE_TTL)
+        return Response(data)
 
 
 # ─── JWT Auth ──────────────────────────────────────────────────────────────────
@@ -1054,11 +1115,9 @@ class CustomAdminAlertListView(APIView):
     permission_classes = [IsStaffUser]
 
     def get(self, request):
-        from apps.alerts.services import reconcile_duplicate_pending_alerts
-        try:
-            reconcile_duplicate_pending_alerts()
-        except Exception as e:
-            logger.warning(f"Failed to reconcile duplicate pending alerts: {e}")
+        # reconcile_duplicate_pending_alerts() was previously called here on every
+        # GET, which is a write operation inside a read endpoint — incorrect.
+        # It is now only called via POST /api/v1/admin/alerts/reconcile/.
 
         status_param = request.query_params.get('status', 'PENDING').strip()
         agency_param = request.query_params.get('agency', '').strip()
@@ -1232,6 +1291,31 @@ class CustomAdminAlertRejectView(APIView):
             'detail': 'Alert rejected successfully.',
             'alert': serializer.data
         })
+
+
+
+class CustomAdminAlertReconcileView(APIView):
+    """
+    POST /api/v1/admin/alerts/reconcile/
+    Explicit operator action to deduplicate pending alerts.
+
+    Previously this ran as a side-effect inside every GET to the alert list,
+    which is incorrect — a write operation must not live inside a read endpoint.
+    This endpoint is intended for manual operator use or periodic Celery Beat schedule.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        from apps.alerts.services import reconcile_duplicate_pending_alerts
+        try:
+            reconcile_duplicate_pending_alerts()
+            return Response({'detail': 'Duplicate pending alerts reconciled successfully.'})
+        except Exception as e:
+            logger.warning(f"Failed to reconcile duplicate pending alerts: {e}")
+            return Response(
+                {'detail': f'Reconciliation failed: {str(e)}'},
+                status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class CustomAdminAlertAiAnalyzeView(APIView):

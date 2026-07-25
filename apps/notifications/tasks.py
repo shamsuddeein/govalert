@@ -1,3 +1,4 @@
+import time
 import logging
 from django.utils import timezone
 from datetime import timedelta
@@ -13,11 +14,11 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def retry_failed_notifications():
     """
     Retry notifications that failed in the last 24 hours.
-    Runs hourly via APScheduler.
+    Runs hourly via Celery Beat.
     """
     logger.info("Starting retry of failed notifications...")
     cutoff = timezone.now() - timedelta(days=1)
@@ -33,7 +34,7 @@ def retry_failed_notifications():
 
     logger.info(f"Found {count} failed notifications to retry.")
     success_count = 0
-    
+
     for notif in failed:
         if not notif.alert:
             continue
@@ -58,11 +59,18 @@ def retry_failed_notifications():
     logger.info(f"Retry completed: {success_count} succeeded, {count - success_count} failed.")
 
 
-@shared_task
+@shared_task(
+    ignore_result=True,
+    soft_time_limit=600,   # 10 min soft limit — fan-out to large subscriber base
+    time_limit=700,        # 11.7 min hard limit
+)
 def dispatch_alert(alert_id: int):
     """
     Fan out alert to all active subscribers.
-    Creates Notification entries for all matching users and sends messages bulk.
+    Creates Notification entries for all matching users and sends messages.
+
+    Deduplication is done with a single pre-fetch of already-notified user IDs
+    before the send loop, avoiding one EXISTS query per user.
     """
     from apps.alerts.models import Alert
     from apps.accounts.models import TelegramUser, UserState
@@ -75,7 +83,7 @@ def dispatch_alert(alert_id: int):
         return
 
     from apps.subscriptions.models import TelegramJobWatch
-    from apps.accounts.models import TelegramUser
+    from apps.subscriptions.models import Subscription
 
     # Identify all users with at least 1 active job watch (curated mode users)
     curated_user_ids = set(
@@ -86,8 +94,6 @@ def dispatch_alert(alert_id: int):
     # General-feed users still honour consent, account state, and agency-level
     # unsubscribe preferences. A job watch only changes feed mode; it never
     # overrides the user's privacy or subscription choices.
-    from apps.subscriptions.models import Subscription
-
     eligible_users = TelegramUser.objects.filter(
         receive_alerts=True,
         state=UserState.ACTIVE,
@@ -125,7 +131,9 @@ def dispatch_alert(alert_id: int):
 
     # Dispatch web email notifications to registered Web users
     try:
-        from apps.subscriptions.services import dispatch_web_user_emails, match_keyword_subscriptions_for_alert, notify_job_watchers
+        from apps.subscriptions.services import (
+            dispatch_web_user_emails, match_keyword_subscriptions_for_alert, notify_job_watchers
+        )
         dispatch_web_user_emails(alert)
         match_keyword_subscriptions_for_alert(alert)
         if is_update:
@@ -133,9 +141,11 @@ def dispatch_alert(alert_id: int):
     except Exception as exc:
         logger.warning(f"Failed multi-channel subscriber dispatch for alert {alert.id}: {exc}")
 
-
     if not users:
-        logger.info(f"No active Telegram subscribers for alert #{alert.id} ({alert.agency.acronym}). Dispatch skipped.")
+        logger.info(
+            f"No active Telegram subscribers for alert #{alert.id} "
+            f"({alert.agency.acronym}). Dispatch skipped."
+        )
         return
 
     text = format_alert_full(alert)
@@ -148,13 +158,19 @@ def dispatch_alert(alert_id: int):
     except Exception as exc:
         logger.warning(f"Failed to post to public alert channel: {exc}")
 
+    # Pre-fetch user IDs that have already received this alert.
+    # One query up-front eliminates N per-user EXISTS checks inside the loop.
+    already_sent_user_ids = set(
+        Notification.objects.filter(alert=alert)
+        .values_list('user_id', flat=True)
+    )
 
     success_count = 0
     failure_count = 0
 
     for user in users:
-        # Check if already sent
-        if Notification.objects.filter(user=user, alert=alert).exists():
+        # O(1) set lookup — no DB hit per user.
+        if user.pk in already_sent_user_ids:
             continue
 
         notif = Notification.objects.create(
@@ -182,8 +198,7 @@ def dispatch_alert(alert_id: int):
             notif.mark_failed(f"Unexpected error: {str(exc)}")
             failure_count += 1
 
-        # Global Telegram rate limit is 30 msg/sec, sleep 0.034s per send
-        import time
+        # Global Telegram rate limit is 30 msg/sec; sleep 34ms per send.
         time.sleep(0.034)
 
     logger.info(f"Dispatch complete for alert {alert_id}: {success_count} sent, {failure_count} failed.")

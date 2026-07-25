@@ -297,10 +297,16 @@ CELERY_TIMEZONE = TIME_ZONE
 
 CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_ROUTES = {
+    # Fan-out scheduling tasks: lightweight, run in the monitoring queue.
     'apps.monitor.tasks.check_high_priority_portals': {'queue': 'monitoring'},
     'apps.monitor.tasks.check_standard_portals': {'queue': 'monitoring'},
     'apps.monitor.tasks.check_low_activity_portals': {'queue': 'monitoring'},
-    'apps.monitor.tasks.portal_check': {'queue': 'monitoring'},
+
+    # Per-portal scrape tasks: potentially slow (Playwright), run in dedicated crawl
+    # queue so slow scrapes cannot starve monitoring fan-out or notification delivery.
+    'apps.monitor.tasks.portal_check': {'queue': 'crawl'},
+
+    # Notification delivery: user-facing, highest priority after crawl fan-out.
     'apps.notifications.tasks.dispatch_alert': {'queue': 'notifications'},
     'apps.notifications.tasks.retry_failed_notifications': {'queue': 'notifications'},
 }

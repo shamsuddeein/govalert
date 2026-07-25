@@ -52,8 +52,16 @@ echo "Logs are being written to runserver.log"
 rm -f celery.pids
 
 # Start Celery workers and beat
-echo "Starting Celery workers (monitoring, notifications, ai)..."
-nohup celery -A config worker -Q monitoring -c 4 -n monitor@%h --loglevel=info > celery_monitor.log 2>&1 &
+# Worker layout:
+#   monitor@  — lightweight fan-out: queues portal_check tasks into 'crawl'. Low concurrency.
+#   crawl@    — actual portal scraping (requests + Playwright). Concurrency matches MAX_PLAYWRIGHT_INSTANCES.
+#   notify@   — Telegram/email fan-out. High concurrency for parallelism.
+#   ai@       — AI classification tasks.
+echo "Starting Celery workers (monitoring, crawl, notifications, ai)..."
+nohup celery -A config worker -Q monitoring -c 2 -n monitor@%h --loglevel=info > celery_monitor.log 2>&1 &
+echo $! >> celery.pids
+
+nohup celery -A config worker -Q crawl -c 4 -n crawl@%h --loglevel=info > celery_crawl.log 2>&1 &
 echo $! >> celery.pids
 
 nohup celery -A config worker -Q notifications -c 8 -n notify@%h --loglevel=info > celery_notifications.log 2>&1 &

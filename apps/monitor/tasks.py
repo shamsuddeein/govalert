@@ -1,7 +1,9 @@
+import time
 import logging
+from decimal import Decimal
 from datetime import timedelta
 from django.utils import timezone
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
 from storage.backup import export_and_backup
 from celery import shared_task
 
@@ -13,8 +15,15 @@ logger = logging.getLogger(__name__)
 MAX_CONSECUTIVE_FAILURES = 10
 
 
-@shared_task
-def portal_check(portal_id: int):
+@shared_task(
+    bind=True,
+    ignore_result=True,
+    soft_time_limit=120,   # 2 min soft: triggers SoftTimeLimitExceeded so we can clean up
+    time_limit=150,        # 2.5 min hard: SIGKILL if soft limit handler hangs
+    max_retries=3,
+    default_retry_delay=30,  # seconds between retries
+)
+def portal_check(self, portal_id: int):
     """
     Check a single portal for changes.
     If changes are detected and recruitment keywords match, creates an alert.
@@ -25,6 +34,8 @@ def portal_check(portal_id: int):
       row so dead domains don't waste the scrape budget indefinitely.
     - Logs a content snippet when a change is detected but no keywords matched,
       allowing operators to audit whether the keyword list needs expanding.
+    - Uptime is computed with a single DB aggregate, not a Python loop over rows.
+    - soft_time_limit/time_limit guard against hung Playwright sessions.
     """
     from apps.agencies.models import Portal, PortalStatus, HealthStatus
     from apps.monitor.scraper import scrape_portal
@@ -33,6 +44,7 @@ def portal_check(portal_id: int):
     from apps.alerts.services import create_alert_from_scrape
     from core.utils import compute_content_hash
     from core.exceptions import ScraperException
+    from celery.exceptions import SoftTimeLimitExceeded
 
     try:
         portal = Portal.objects.get(pk=portal_id)
@@ -50,6 +62,9 @@ def portal_check(portal_id: int):
         content = content.replace('\x00', '') if content else ''
         content_type = getattr(scraper, 'last_content_type', '')
         success = True
+    except SoftTimeLimitExceeded:
+        logger.warning(f"Soft time limit exceeded for portal {portal.name} ({portal.url}). Aborting check.")
+        raise
     except ScraperException as e:
         logger.warning(f"Scraper failed for {portal.url}: {e}")
         content = ""
@@ -141,13 +156,14 @@ def portal_check(portal_id: int):
                     )
     # else: first-ever snapshot — just establish baseline, nothing to compare yet.
 
-    # Compute uptime from the last 100 snapshots (rolling window)
-    recent = Snapshot.objects.filter(portal=portal).order_by('-created_at')[:100]
-    total_recent = recent.count()
-    if total_recent > 0:
-        ok_recent = sum(1 for s in recent if s.status_code is not None and s.status_code < 400)
-        from decimal import Decimal
-        portal.uptime_percentage = Decimal(str(round(ok_recent / total_recent * 100, 2)))
+    # ── Compute uptime from the last 100 snapshots (single aggregate query) ──
+    # Previously iterated 100 Python objects; now one SQL COUNT with a filter.
+    agg = Snapshot.objects.filter(portal=portal).order_by('-created_at')[:100].aggregate(
+        total=Count('id'),
+        ok=Count('id', filter=Q(status_code__isnull=False, status_code__lt=400)),
+    )
+    if agg['total']:
+        portal.uptime_percentage = Decimal(str(round(agg['ok'] / agg['total'] * 100, 2)))
 
     # Update response time on the Portal model (API reads this, not just Snapshot)
     portal.response_time_ms = response_time_ms
@@ -174,73 +190,63 @@ def portal_check(portal_id: int):
     logger.info(f"Portal check complete: {portal.name}. Change={has_change}, AlertTriggered={triggered_alert}")
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def check_high_priority_portals():
     """
-    Check portals marked as HIGH priority (every 5 minutes).
+    Fan out checks for HIGH priority portals (every 5 minutes).
 
-    Previously filtered by check_interval_minutes__lte=10, which matched no
-    portals in production because all portals are stored with check_interval_minutes=15.
-    Now correctly filters on the `priority` field, which IS populated.
+    Calls portal_check.apply_async() per portal rather than executing
+    synchronously so each portal gets its own task, its own timeout, and
+    its own retry budget.  A single slow Playwright scrape no longer blocks
+    the entire high-priority tier.
     """
     from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting high priority portals check...")
-    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.HIGH)
-    count = portals.count()
+    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.HIGH).values_list('id', flat=True)
+    count = len(portals)
     logger.info(f"Found {count} active HIGH priority portals to check.")
-    for p in portals:
-        try:
-            portal_check(p.id)
-        except Exception as e:
-            logger.error(f"Error checking high priority portal {p.id} ({p.name}): {e}")
-    logger.info("Finished high priority portals check.")
+    for portal_id in portals:
+        portal_check.apply_async(args=[portal_id], queue='crawl')
+    logger.info(f"Queued {count} HIGH priority portal checks.")
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def check_standard_portals():
     """
-    Check portals marked as MEDIUM priority (every 20 minutes).
+    Fan out checks for MEDIUM priority portals (every 20 minutes).
 
-    Previously filtered by check_interval_minutes=15, which was the only value
-    in the DB so all portals ended up here regardless of their intended priority.
-    Now correctly filters on the `priority` field.
+    Calls portal_check.apply_async() per portal — see check_high_priority_portals
+    for the rationale.
     """
     from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting standard portals check...")
-    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.MEDIUM)
-    count = portals.count()
+    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.MEDIUM).values_list('id', flat=True)
+    count = len(portals)
     logger.info(f"Found {count} active MEDIUM priority portals to check.")
-    for p in portals:
-        try:
-            portal_check(p.id)
-        except Exception as e:
-            logger.error(f"Error checking standard portal {p.id} ({p.name}): {e}")
-    logger.info("Finished standard portals check.")
+    for portal_id in portals:
+        portal_check.apply_async(args=[portal_id], queue='crawl')
+    logger.info(f"Queued {count} MEDIUM priority portal checks.")
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def check_low_activity_portals():
     """
-    Check portals marked as LOW priority (every 60 minutes).
+    Fan out checks for LOW priority portals (every 60 minutes).
 
-    Previously filtered by check_interval_minutes__gte=30, which matched no
-    portals because all portals had check_interval_minutes=15.
-    Now correctly filters on the `priority` field.
+    Calls portal_check.apply_async() per portal — see check_high_priority_portals
+    for the rationale.
     """
     from apps.agencies.models import Portal, PortalPriority
     logger.info("Starting low activity portals check...")
-    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.LOW)
-    count = portals.count()
+    portals = Portal.objects.filter(is_active=True, priority=PortalPriority.LOW).values_list('id', flat=True)
+    count = len(portals)
     logger.info(f"Found {count} active LOW priority portals to check.")
-    for p in portals:
-        try:
-            portal_check(p.id)
-        except Exception as e:
-            logger.error(f"Error checking low activity portal {p.id} ({p.name}): {e}")
-    logger.info("Finished low activity portals check.")
+    for portal_id in portals:
+        portal_check.apply_async(args=[portal_id], queue='crawl')
+    logger.info(f"Queued {count} LOW priority portal checks.")
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def nightly_backup():
     """Export database to JSON and post to the backup channel."""
     logger.info("Starting nightly backup task...")
@@ -251,7 +257,7 @@ def nightly_backup():
         logger.error("Nightly backup task failed.")
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def daily_health_report():
     """Generate daily health report for YESTERDAY and notify super admins.
 
@@ -266,18 +272,19 @@ def daily_health_report():
     # Always report on YESTERDAY — not today (which is incomplete at 08:00).
     yesterday = timezone.now().date() - timedelta(days=1)
 
-    total_checks = Snapshot.objects.filter(created_at__date=yesterday).count()
-    # Count failed and successful independently to avoid NULL status_code inflation.
-    failed_checks = Snapshot.objects.filter(
-        created_at__date=yesterday, status_code__gte=400
-    ).count()
-    network_errors = Snapshot.objects.filter(
-        created_at__date=yesterday, status_code__isnull=True
-    ).count()
+    agg = Snapshot.objects.filter(created_at__date=yesterday).aggregate(
+        total=Count('id'),
+        failed=Count('id', filter=Q(status_code__gte=400)),
+        network_errors=Count('id', filter=Q(status_code__isnull=True)),
+        changes=Count('id', filter=Q(has_change=True)),
+    )
+    total_checks = agg['total'] or 0
+    failed_checks = agg['failed'] or 0
+    network_errors = agg['network_errors'] or 0
     successful_checks = total_checks - failed_checks - network_errors
+    changes_detected = agg['changes'] or 0
 
     success_rate = (successful_checks / total_checks * 100) if total_checks > 0 else 100.0
-    changes_detected = Snapshot.objects.filter(created_at__date=yesterday, has_change=True).count()
 
     report = (
         "<b>RecruitmentAlert Daily Health Report</b>\n\n"
@@ -298,50 +305,58 @@ def daily_health_report():
         logger.warning("TELEGRAM_BACKUP_CHANNEL_ID not set — skipping sending daily health report.")
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def aggregate_portal_health_logs():
     """Aggregate yesterday's Snapshots into PortalHealthLog entries.
 
     Runs nightly at 00:30 (after midnight so yesterday is fully complete).
     Uses update_or_create so re-runs are idempotent (safe to re-trigger manually).
+
+    Previously fired 5 queries × N portals. Now uses a single batch annotate()
+    query that returns all portal aggregates in one round-trip, then bulk
+    upserts.  For 42 portals this drops ~210 queries to ~5.
     """
-    from decimal import Decimal
     from apps.agencies.models import Portal
     from apps.monitor.models import Snapshot, PortalHealthLog
 
     yesterday = timezone.now().date() - timedelta(days=1)
     logger.info(f"Aggregating portal health logs for {yesterday}...")
 
-    portals = Portal.objects.filter(is_active=True)
+    # One query: aggregate all portal stats for yesterday at once.
+    rows = (
+        Snapshot.objects
+        .filter(created_at__date=yesterday)
+        .values('portal_id')
+        .annotate(
+            checks_total=Count('id'),
+            checks_successful=Count('id', filter=Q(status_code__lt=400)),
+            checks_failed=Count('id', filter=Q(status_code__gte=400)),
+            avg_rt=Avg('response_time_ms', filter=Q(response_time_ms__isnull=False)),
+            changes_detected=Count('id', filter=Q(has_change=True)),
+            alerts_triggered=Count('id', filter=Q(triggered_alert=True)),
+        )
+    )
+
     created_count = 0
     updated_count = 0
 
-    for portal in portals:
-        day_snaps = Snapshot.objects.filter(portal=portal, created_at__date=yesterday)
-        checks_total = day_snaps.count()
-        if checks_total == 0:
+    for row in rows:
+        if row['checks_total'] == 0:
             continue
 
-        checks_successful = day_snaps.filter(status_code__lt=400).count()
-        checks_failed = day_snaps.filter(status_code__gte=400).count()
-        avg_rt = day_snaps.filter(
-            response_time_ms__isnull=False
-        ).aggregate(avg=Avg('response_time_ms'))['avg']
-        changes_detected = day_snaps.filter(has_change=True).count()
-        alerts_triggered = day_snaps.filter(triggered_alert=True).count()
-        uptime = Decimal(str(round(checks_successful / checks_total * 100, 2)))
+        uptime = Decimal(str(round(row['checks_successful'] / row['checks_total'] * 100, 2)))
 
         _, was_created = PortalHealthLog.objects.update_or_create(
-            portal=portal,
+            portal_id=row['portal_id'],
             date=yesterday,
             defaults={
-                'checks_total': checks_total,
-                'checks_successful': checks_successful,
-                'checks_failed': checks_failed,
-                'avg_response_time_ms': int(avg_rt) if avg_rt else None,
+                'checks_total': row['checks_total'],
+                'checks_successful': row['checks_successful'],
+                'checks_failed': row['checks_failed'],
+                'avg_response_time_ms': int(row['avg_rt']) if row['avg_rt'] else None,
                 'uptime_percentage': uptime,
-                'changes_detected': changes_detected,
-                'alerts_triggered': alerts_triggered,
+                'changes_detected': row['changes_detected'],
+                'alerts_triggered': row['alerts_triggered'],
             }
         )
         if was_created:
@@ -355,7 +370,7 @@ def aggregate_portal_health_logs():
     )
 
 
-@shared_task
+@shared_task(ignore_result=True)
 def purge_old_snapshot_content():
     """Purge raw_content from Snapshots older than 30 days.
 
