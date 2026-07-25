@@ -2147,32 +2147,66 @@ class CustomAdminSystemHealthView(APIView):
 
         # Check today's snapshots
         today_snaps = Snapshot.objects.filter(created_at__date=today)
-        total_checks_today = today_snaps.count()
+        snaps = today_snaps if today_snaps.exists() else Snapshot.objects.filter(created_at__gte=now - timedelta(hours=24))
 
-        if total_checks_today > 0:
-            successful_checks_today = today_snaps.filter(status_code__lt=400).count()
-            failed_checks_today = total_checks_today - successful_checks_today
-            success_rate_today = round((successful_checks_today / total_checks_today) * 100, 2)
-        else:
-            # Fallback to 24h window if no checks yet today
-            snaps_24h = Snapshot.objects.filter(created_at__gte=now - timedelta(hours=24))
-            if snaps_24h.exists():
-                total_checks_today = snaps_24h.count()
-                successful_checks_today = snaps_24h.filter(status_code__lt=400).count()
-                failed_checks_today = total_checks_today - successful_checks_today
-                success_rate_today = round((successful_checks_today / total_checks_today) * 100, 2)
+        if snaps.exists():
+            total_checks_today = snaps.count()
+
+            # 3 Distinct Excluded Categories
+            backoff_skipped_today = snaps.filter(
+                Q(portal__consecutive_failures__gte=10) | Q(portal__health_status='DEGRADED') | Q(portal__status='DEGRADED')
+            ).count()
+
+            captcha_blocked_today = snaps.filter(
+                Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) | Q(portal__status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])
+            ).count()
+
+            firewall_blocked_today = snaps.filter(
+                Q(status_code=403) | Q(portal__health_status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED']) | Q(portal__status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED'])
+            ).exclude(
+                Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) | Q(portal__status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])
+            ).count()
+
+            excluded_total = backoff_skipped_today + captcha_blocked_today + firewall_blocked_today
+            effective_total_checks_today = max(0, total_checks_today - excluded_total)
+
+            successful_checks_today = snaps.filter(
+                status_code__lt=400
+            ).exclude(
+                Q(portal__consecutive_failures__gte=10) | Q(portal__health_status='DEGRADED') | Q(portal__status='DEGRADED') |
+                Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) | Q(portal__status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) |
+                Q(portal__health_status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED']) | Q(portal__status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED'])
+            ).count()
+
+            genuine_failed_checks_today = max(0, effective_total_checks_today - successful_checks_today)
+            failed_checks_today = genuine_failed_checks_today
+
+            if effective_total_checks_today > 0:
+                success_rate_today = round((successful_checks_today / effective_total_checks_today) * 100, 2)
             else:
-                # If no snapshots in last 24h, derive from live portal roster state
-                total_portals_count = active_portals.count()
-                offline_portals_count = active_portals.filter(
-                    Q(health_status__in=['OFFLINE', 'DOWN']) | Q(status__in=['OFFLINE', 'DOWN']) | Q(consecutive_failures__gt=0)
-                ).count()
-                online_portals_count = max(0, total_portals_count - offline_portals_count)
+                success_rate_today = 100.0
+        else:
+            # If no snapshots in last 24h, derive from live portal roster state
+            total_portals_count = active_portals.count()
+            offline_portals_count = active_portals.filter(
+                Q(health_status__in=['OFFLINE', 'DOWN']) | Q(status__in=['OFFLINE', 'DOWN']) | Q(consecutive_failures__gt=0)
+            ).exclude(
+                Q(health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA', 'BLOCKED', 'MANUAL_MONITORING_REQUIRED']) | Q(consecutive_failures__gte=10)
+            ).count()
 
-                total_checks_today = total_portals_count
-                successful_checks_today = online_portals_count
-                failed_checks_today = offline_portals_count
-                success_rate_today = round((online_portals_count / max(total_portals_count, 1)) * 100, 2)
+            backoff_skipped_today = active_portals.filter(consecutive_failures__gte=10).count()
+            captcha_blocked_today = active_portals.filter(Q(health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) | Q(status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])).count()
+            firewall_blocked_today = active_portals.filter(Q(health_status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED']) | Q(status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED'])).count()
+
+            excluded_total = backoff_skipped_today + captcha_blocked_today + firewall_blocked_today
+            effective_total_checks_today = max(0, total_portals_count - excluded_total)
+            online_portals_count = max(0, effective_total_checks_today - offline_portals_count)
+
+            total_checks_today = total_portals_count
+            successful_checks_today = online_portals_count
+            failed_checks_today = offline_portals_count
+            genuine_failed_checks_today = offline_portals_count
+            success_rate_today = round((online_portals_count / max(effective_total_checks_today, 1)) * 100, 2)
 
         changes_detected_today = Snapshot.objects.filter(
             created_at__date=today, has_change=True
@@ -2188,8 +2222,16 @@ class CustomAdminSystemHealthView(APIView):
             'agencies_maintenance': agencies_maintenance,
             'total_agencies': total_agencies,
             'total_checks_today': total_checks_today,
+            'effective_total_checks_today': effective_total_checks_today,
             'successful_checks_today': successful_checks_today,
-            'failed_checks_today': failed_checks_today,
+            'failed_checks_today': genuine_failed_checks_today,
+            'genuine_failed_checks_today': genuine_failed_checks_today,
+            'backoff_skipped': backoff_skipped_today,
+            'backoff_skipped_count': backoff_skipped_today,
+            'captcha_blocked': captcha_blocked_today,
+            'captcha_blocked_count': captcha_blocked_today,
+            'firewall_blocked': firewall_blocked_today,
+            'firewall_blocked_count': firewall_blocked_today,
             'success_rate_today': success_rate_today,
             'changes_detected_today': changes_detected_today,
             'system_operational': system_operational,

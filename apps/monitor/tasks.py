@@ -343,18 +343,22 @@ def daily_health_report():
 
     agg = Snapshot.objects.filter(created_at__date=yesterday).aggregate(
         total=Count('id'),
-        captcha=Count('id', filter=Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) | Q(portal__status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])),
-        failed=Count('id', filter=Q(status_code__gte=400) & ~Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])),
-        network_errors=Count('id', filter=Q(status_code__isnull=True)),
+        backoff_skipped=Count('id', filter=Q(portal__consecutive_failures__gte=10) | Q(portal__health_status='DEGRADED') | Q(portal__status='DEGRADED')),
+        captcha_blocked=Count('id', filter=Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA']) | Q(portal__status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])),
+        firewall_blocked=Count('id', filter=(Q(status_code=403) | Q(portal__health_status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED']) | Q(portal__status__in=['BLOCKED', 'MANUAL_MONITORING_REQUIRED'])) & ~Q(portal__health_status__in=['CAPTCHA_PROTECTED', 'CAPTCHA'])),
+        successful=Count('id', filter=Q(status_code__lt=400) & ~Q(portal__consecutive_failures__gte=10) & ~Q(portal__health_status__in=['DEGRADED', 'CAPTCHA_PROTECTED', 'CAPTCHA', 'BLOCKED', 'MANUAL_MONITORING_REQUIRED']) & ~Q(portal__status__in=['DEGRADED', 'CAPTCHA_PROTECTED', 'CAPTCHA', 'BLOCKED', 'MANUAL_MONITORING_REQUIRED'])),
         changes=Count('id', filter=Q(has_change=True)),
     )
     total_checks = agg['total'] or 0
-    captcha_checks = agg['captcha'] or 0
-    failed_checks = agg['failed'] or 0
-    network_errors = agg['network_errors'] or 0
-    effective_total = max(0, total_checks - captcha_checks)
-    successful_checks = max(0, effective_total - failed_checks - network_errors)
+    backoff_skipped = agg['backoff_skipped'] or 0
+    captcha_blocked = agg['captcha_blocked'] or 0
+    firewall_blocked = agg['firewall_blocked'] or 0
+    successful_checks = agg['successful'] or 0
     changes_detected = agg['changes'] or 0
+
+    excluded_total = backoff_skipped + captcha_blocked + firewall_blocked
+    effective_total = max(0, total_checks - excluded_total)
+    genuine_failures = max(0, effective_total - successful_checks)
 
     success_rate = (successful_checks / effective_total * 100) if effective_total > 0 else 100.0
 
@@ -363,10 +367,11 @@ def daily_health_report():
         f"📅 Date: {yesterday.strftime('%d %B %Y')}\n"
         f"🔄 Total checks: {total_checks}\n"
         f"✅ Successful: {successful_checks}\n"
-        f"🛡️ CAPTCHA Protected: {captcha_checks}\n"
-        f"❌ Failed (HTTP 4xx/5xx): {failed_checks}\n"
-        f"🔌 Network errors: {network_errors}\n"
-        f"📈 Success Rate: {success_rate:.2f}%\n"
+        f"⏸️ Backoff Skipped: {backoff_skipped}\n"
+        f"🛡️ CAPTCHA Blocked: {captcha_blocked}\n"
+        f"🚫 Firewall Blocked: {firewall_blocked}\n"
+        f"❌ Genuine Failures: {genuine_failures}\n"
+        f"📈 Genuine Success Rate: {success_rate:.2f}%\n"
         f"⚡ Changes Detected: {changes_detected}\n"
     )
 
