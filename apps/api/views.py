@@ -1237,84 +1237,75 @@ class GoogleAuthView(APIView):
         import os
         import secrets
         import json
+        import logging
         import urllib.request
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
+
+        logger = logging.getLogger(__name__)
 
         token = request.data.get('id_token') or request.data.get('token') or request.data.get('credential')
         if not token:
             return Response({'detail': 'Google ID token is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
+        token = str(token).strip()
         client_id = os.getenv('GOOGLE_CLIENT_ID') or getattr(settings, 'GOOGLE_CLIENT_ID', None)
+        if client_id:
+            client_id = str(client_id).strip()
 
         id_info = None
 
-        # Method 1: verify_oauth2_token
+        # Method 1: verify_oauth2_token with google-auth
         try:
+            req = google_requests.Request()
             if client_id:
                 try:
-                    id_info = id_token.verify_oauth2_token(token, google_requests.Request(), audience=client_id, clock_skew_in_seconds=10)
-                except Exception:
-                    id_info = id_token.verify_oauth2_token(token, google_requests.Request(), clock_skew_in_seconds=10)
+                    id_info = id_token.verify_oauth2_token(token, req, audience=client_id, clock_skew_in_seconds=10)
+                except Exception as e1:
+                    logger.warning("Google token verify with audience failed: %s", e1)
+                    id_info = id_token.verify_oauth2_token(token, req, clock_skew_in_seconds=10)
             else:
-                id_info = id_token.verify_oauth2_token(token, google_requests.Request(), clock_skew_in_seconds=10)
-        except Exception:
-            pass
+                id_info = id_token.verify_oauth2_token(token, req, clock_skew_in_seconds=10)
+        except Exception as exc:
+            logger.warning("google-auth verify_oauth2_token failed: %s", exc)
 
         # Method 2: Google tokeninfo API endpoint
         if not id_info:
             try:
                 url = f"https://oauth2.googleapis.com/tokeninfo?id_token={token}"
-                req = urllib.request.urlopen(url, timeout=5)
-                if req.status == 200:
-                    id_info = json.loads(req.read().decode('utf-8'))
-            except Exception:
-                pass
+                req_obj = urllib.request.Request(url, headers={"User-Agent": "GovAlert/1.0"})
+                with urllib.request.urlopen(req_obj, timeout=6) as resp:
+                    if resp.status == 200:
+                        id_info = json.loads(resp.read().decode('utf-8'))
+            except Exception as e2:
+                logger.warning("Google tokeninfo endpoint failed: %s", e2)
 
         # Method 3: Google userinfo API endpoint (for access_token)
         if not id_info:
             try:
                 url = "https://www.googleapis.com/oauth2/v3/userinfo"
-                req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-                res = urllib.request.urlopen(req, timeout=5)
-                if res.status == 200:
-                    id_info = json.loads(res.read().decode('utf-8'))
-            except Exception:
-                pass
+                req_obj = urllib.request.Request(url, headers={
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "GovAlert/1.0"
+                })
+                with urllib.request.urlopen(req_obj, timeout=6) as resp:
+                    if resp.status == 200:
+                        id_info = json.loads(resp.read().decode('utf-8'))
+            except Exception as e3:
+                logger.warning("Google userinfo endpoint failed: %s", e3)
 
         if not id_info or not isinstance(id_info, dict):
-            return Response({'detail': 'Invalid or expired Google token.'}, status=http_status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Google token verification failed. Token is invalid or expired.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         email = id_info.get('email')
         if not email:
-            return Response({'detail': 'Email address not provided in Google token.'}, status=http_status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'Email address not provided in Google token payload.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         email = email.lower().strip()
         name = id_info.get('name', '')
         given_name = id_info.get('given_name', '')
         family_name = id_info.get('family_name', '')
         google_sub = id_info.get('sub', '')
-
-        User = get_user_model()
-        user = User.objects.filter(email__iexact=email).first()
-
-        if not user:
-            base_username = email.split('@')[0]
-            username = base_username
-            counter = 1
-            while User.objects.filter(username=username).exists():
-                username = f"{base_username}_{counter}"
-                counter += 1
-
-            random_password = secrets.token_urlsafe(32)
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=random_password,
-                first_name=given_name or name,
-                last_name=family_name,
-                is_active=True
-            )
 
         web_profile, _ = WebUser.objects.get_or_create(user=user)
         web_profile.auth_provider = 'google'
