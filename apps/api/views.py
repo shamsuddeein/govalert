@@ -1223,6 +1223,98 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=http_status.HTTP_400_BAD_REQUEST)
 
 
+class GoogleAuthView(APIView):
+    """
+    POST /api/v1/auth/google/ or /api/auth/google/
+    Body: {"id_token": str} (or {"token": str} / {"credential": str})
+    Verifies Google ID token, authenticates existing user or creates a new account with platform='google',
+    and returns SimpleJWT access and refresh tokens.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthThrottle]
+
+    def post(self, request):
+        import os
+        import secrets
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
+
+        token = request.data.get('id_token') or request.data.get('token') or request.data.get('credential')
+        if not token:
+            return Response({'detail': 'Google ID token is required.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        client_id = os.getenv('GOOGLE_CLIENT_ID') or getattr(settings, 'GOOGLE_CLIENT_ID', None)
+
+        try:
+            if client_id:
+                try:
+                    id_info = id_token.verify_oauth2_token(token, google_requests.Request(), audience=client_id, clock_skew_in_seconds=10)
+                except Exception:
+                    id_info = id_token.verify_oauth2_token(token, google_requests.Request(), clock_skew_in_seconds=10)
+            else:
+                id_info = id_token.verify_oauth2_token(token, google_requests.Request(), clock_skew_in_seconds=10)
+        except Exception as exc:
+            return Response({
+                'detail': f'Google token verification failed: {str(exc)}'
+            }, status=http_status.HTTP_400_BAD_REQUEST)
+
+        email = id_info.get('email')
+        if not email:
+            return Response({'detail': 'Email address not provided in Google token.'}, status=http_status.HTTP_400_BAD_REQUEST)
+
+        email = email.lower().strip()
+        name = id_info.get('name', '')
+        given_name = id_info.get('given_name', '')
+        family_name = id_info.get('family_name', '')
+        google_sub = id_info.get('sub', '')
+
+        User = get_user_model()
+        user = User.objects.filter(email__iexact=email).first()
+
+        if not user:
+            base_username = email.split('@')[0]
+            username = base_username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}_{counter}"
+                counter += 1
+
+            random_password = secrets.token_urlsafe(32)
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=random_password,
+                first_name=given_name or name,
+                last_name=family_name,
+                is_active=True
+            )
+
+        web_profile, _ = WebUser.objects.get_or_create(user=user)
+        web_profile.auth_provider = 'google'
+        if google_sub:
+            web_profile.google_sub = google_sub
+        web_profile.save()
+
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'auth_provider': 'google',
+                'platform': 'Google'
+            }
+        }, status=http_status.HTTP_200_OK)
+
+
 class LogoutView(APIView):
     """
     POST /api/auth/logout/
@@ -2418,10 +2510,15 @@ class CustomAdminUserListView(APIView):
                 if search and search not in search_haystack:
                     continue
 
+                provider = getattr(w, 'auth_provider', 'email')
+                platform_name = 'Google' if provider == 'google' else 'Web User'
+
                 results.append({
                     'id': f"web-{w.id}",
                     'raw_id': w.id,
                     'user_type': 'WEB',
+                    'auth_provider': provider,
+                    'platform': platform_name,
                     'email': u.email or u.username,
                     'display_name': full_name,
                     'telegram_id': None,

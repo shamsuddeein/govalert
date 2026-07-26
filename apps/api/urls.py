@@ -34,6 +34,7 @@ auth_patterns = [
     path('token/', views.EmailTokenObtainPairView.as_view(), name='token_obtain'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('register/', views.RegisterView.as_view(), name='register'),
+    path('google/', views.GoogleAuthView.as_view(), name='google_auth'),
     path('logout/', views.LogoutView.as_view(), name='logout'),
     path('me/', views.MeView.as_view(), name='me'),
     path('password/change/', views.PasswordChangeView.as_view(), name='password_change'),
@@ -127,6 +128,7 @@ admin_patterns = [
 
 urlpatterns = [
     path('auth/', include(auth_patterns)),
+    path('v1/auth/google/', views.GoogleAuthView.as_view(), name='google_auth_v1'),
     path('v1/', include(public_patterns)),
     path('v1/admin/', include(admin_patterns)),
 ]

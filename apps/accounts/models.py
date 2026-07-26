@@ -172,6 +172,18 @@ class WebUser(models.Model):
         blank=True,
         related_name='saved_by_users'
     )
+    auth_provider = models.CharField(
+        max_length=20,
+        default='email',
+        help_text="Authentication provider, e.g. 'email', 'google'."
+    )
+    google_sub = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        db_index=True,
+        help_text="Google user ID (sub)."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
