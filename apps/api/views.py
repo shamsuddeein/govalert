@@ -613,7 +613,7 @@ class PublicAuditLogView(APIView):
         page = int(request.query_params.get('page', 1))
         page_size = int(request.query_params.get('page_size', 100))
 
-        snapshots = Snapshot.objects.select_related('portal', 'portal__agency').order_by('-timestamp')
+        snapshots = Snapshot.objects.select_related('portal', 'portal__agency').order_by('-created_at')
         total_count = snapshots.count()
 
         results = []
@@ -626,11 +626,11 @@ class PublicAuditLogView(APIView):
                 agency = s.portal.agency if s.portal else None
                 agency_name = agency.name if agency else (s.portal.name if s.portal else 'Federal MDA')
                 agency_acronym = agency.acronym if agency else ''
-                portal_url = s.portal.portal_url if s.portal else ''
+                portal_url = s.portal.url if s.portal else ''
 
-                if s.has_changes:
+                if s.has_change:
                     result_status = 'changed'
-                elif s.is_successful:
+                elif s.status_code and s.status_code < 400:
                     result_status = 'online'
                 else:
                     result_status = 'offline'
@@ -640,30 +640,11 @@ class PublicAuditLogView(APIView):
                     'agency_name': agency_name,
                     'agency_acronym': agency_acronym,
                     'portal_url': portal_url,
-                    'timestamp': s.timestamp.isoformat() if s.timestamp else None,
+                    'timestamp': s.created_at.isoformat() if s.created_at else None,
                     'status_code': s.status_code or 200,
                     'result': result_status,
-                    'recruitment_detected': bool(s.has_changes),
+                    'recruitment_detected': bool(s.has_change),
                 })
-        else:
-            # Fallback: Populate entries from Agency & Portal records if snapshots haven't accumulated
-            portals = Portal.objects.select_related('agency').all().order_by('agency__acronym')
-            now_iso = timezone.now().isoformat()
-            for idx, p in enumerate(portals, start=1):
-                agency_name = p.agency.name if p.agency else p.name
-                agency_acronym = p.agency.acronym if p.agency else ''
-                status_str = 'online' if p.status == 'ONLINE' else ('maintenance' if p.status == 'MAINTENANCE' else 'offline')
-                results.append({
-                    'id': idx,
-                    'agency_name': agency_name,
-                    'agency_acronym': agency_acronym,
-                    'portal_url': p.portal_url,
-                    'timestamp': p.last_checked_at.isoformat() if p.last_checked_at else now_iso,
-                    'status_code': 200 if p.status == 'ONLINE' else 503,
-                    'result': status_str,
-                    'recruitment_detected': p.jobs_available > 0,
-                })
-            total_count = len(results)
 
         total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 1
 
