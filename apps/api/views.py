@@ -1307,6 +1307,27 @@ class GoogleAuthView(APIView):
         family_name = id_info.get('family_name', '')
         google_sub = id_info.get('sub', '')
 
+        User = get_user_model()
+        user = User.objects.filter(email__iexact=email).first()
+
+        if not user:
+            base_username = email.split('@')[0]
+            username = base_username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}_{counter}"
+                counter += 1
+
+            random_password = secrets.token_urlsafe(32)
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=random_password,
+                first_name=given_name or name or base_username,
+                last_name=family_name or '',
+                is_active=True
+            )
+
         web_profile, _ = WebUser.objects.get_or_create(user=user)
         web_profile.auth_provider = 'google'
         if google_sub:
