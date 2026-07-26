@@ -3,7 +3,7 @@ from django.db import migrations
 def create_superuser(apps, schema_editor):
     from django.contrib.auth import get_user_model
     User = get_user_model()
-    email = 'talktoshamsuddeen@gmail.com'
+    email = 'talktoshamsuddeein@gmail.com'
     password = 'Allahu_akbar01'
     username = 'talktoshamsuddeen'
     
@@ -21,7 +21,7 @@ def create_superuser(apps, schema_editor):
 def remove_superuser(apps, schema_editor):
     from django.contrib.auth import get_user_model
     User = get_user_model()
-    email = 'talktoshamsuddeen@gmail.com'
+    email = 'talktoshamsuddeein@gmail.com'
     User.objects.filter(email__iexact=email).delete()
 
 class Migration(migrations.Migration):
