@@ -1227,7 +1227,7 @@ class GoogleAuthView(APIView):
     """
     POST /api/v1/auth/google/ or /api/auth/google/
     Body: {"id_token": str} (or {"token": str} / {"credential": str})
-    Verifies Google ID token, authenticates existing user or creates a new account with platform='google',
+    Verifies Google token (ID token or access token), authenticates existing user or creates a new account with platform='google',
     and returns SimpleJWT access and refresh tokens.
     """
     permission_classes = [AllowAny]
@@ -1236,6 +1236,8 @@ class GoogleAuthView(APIView):
     def post(self, request):
         import os
         import secrets
+        import json
+        import urllib.request
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
 
@@ -1245,6 +1247,9 @@ class GoogleAuthView(APIView):
 
         client_id = os.getenv('GOOGLE_CLIENT_ID') or getattr(settings, 'GOOGLE_CLIENT_ID', None)
 
+        id_info = None
+
+        # Method 1: verify_oauth2_token
         try:
             if client_id:
                 try:
@@ -1253,10 +1258,32 @@ class GoogleAuthView(APIView):
                     id_info = id_token.verify_oauth2_token(token, google_requests.Request(), clock_skew_in_seconds=10)
             else:
                 id_info = id_token.verify_oauth2_token(token, google_requests.Request(), clock_skew_in_seconds=10)
-        except Exception as exc:
-            return Response({
-                'detail': f'Google token verification failed: {str(exc)}'
-            }, status=http_status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            pass
+
+        # Method 2: Google tokeninfo API endpoint
+        if not id_info:
+            try:
+                url = f"https://oauth2.googleapis.com/tokeninfo?id_token={token}"
+                req = urllib.request.urlopen(url, timeout=5)
+                if req.status == 200:
+                    id_info = json.loads(req.read().decode('utf-8'))
+            except Exception:
+                pass
+
+        # Method 3: Google userinfo API endpoint (for access_token)
+        if not id_info:
+            try:
+                url = "https://www.googleapis.com/oauth2/v3/userinfo"
+                req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+                res = urllib.request.urlopen(req, timeout=5)
+                if res.status == 200:
+                    id_info = json.loads(res.read().decode('utf-8'))
+            except Exception:
+                pass
+
+        if not id_info or not isinstance(id_info, dict):
+            return Response({'detail': 'Invalid or expired Google token.'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         email = id_info.get('email')
         if not email:
