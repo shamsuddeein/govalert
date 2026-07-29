@@ -9,15 +9,10 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-_BASE_URL = None
-
-
 def _get_base_url() -> str:
-    global _BASE_URL
-    if _BASE_URL is None:
-        token = settings.TELEGRAM_BOT_TOKEN
-        _BASE_URL = f"https://api.telegram.org/bot{token}"
-    return _BASE_URL
+    """Always build URL from current settings so a rotated token takes effect immediately."""
+    token = settings.TELEGRAM_BOT_TOKEN
+    return f"https://api.telegram.org/bot{token}"
 
 
 def send_message(
@@ -58,7 +53,9 @@ def send_message(
         if not data.get('ok'):
             error_code = data.get('error_code')
             description = data.get('description', '')
-            if error_code in (403, 400) and 'blocked' in description.lower():
+            # Telegram sends HTTP 403 (Forbidden) when the user has blocked the bot.
+            # HTTP 400 is a bad request / validation error and should NOT be treated as blocked.
+            if error_code == 403 and 'blocked' in description.lower():
                 from core.exceptions import TelegramDeliveryException
                 raise TelegramDeliveryException(f"User {chat_id} has blocked the bot.")
             logger.warning(f"Telegram API error for chat {chat_id}: {description}")

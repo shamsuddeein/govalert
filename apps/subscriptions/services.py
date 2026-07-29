@@ -20,7 +20,8 @@ def auto_subscribe_all(user: TelegramUser) -> int:
     
     Returns: number of new subscriptions created.
     """
-    active_agencies = Agency.objects.filter(is_active=True)
+    # Evaluate once and reuse — avoids 3 separate DB round-trips.
+    active_agencies = list(Agency.objects.filter(is_active=True))
 
     subscriptions_to_create = [
         Subscription(user=user, agency=agency)
@@ -33,14 +34,15 @@ def auto_subscribe_all(user: TelegramUser) -> int:
     )
 
     # Re-activate any existing inactive subscriptions
+    agency_ids = [a.id for a in active_agencies]
     Subscription.objects.filter(
         user=user,
-        agency__in=active_agencies,
+        agency_id__in=agency_ids,
         is_active=False,
     ).update(is_active=True, unsubscribed_at=None)
 
-    # Update subscriber counts
-    for agency in Agency.objects.filter(is_active=True):
+    # Update subscriber counts in bulk
+    for agency in active_agencies:
         agency.subscriber_count = Subscription.objects.filter(agency=agency, is_active=True).count()
         agency.save(update_fields=['subscriber_count'])
 
@@ -132,7 +134,8 @@ def match_keyword_subscriptions_for_alert(alert) -> int:
     frontend_url = getattr(settings, 'FRONTEND_URL', 'https://www.recruitmentalert.com.ng').rstrip('/')
     job_ref = getattr(alert, 'ref', alert.id)
     job_url = f"{frontend_url}/jobs/{job_ref}"
-    deadline_str = alert.deadline.strftime("%d %b %Y") if getattr(alert, 'deadline', None) else "See portal for deadline"
+    # Alert.deadline is a CharField — access it directly as a string.
+    deadline_str = alert.deadline or "See portal for deadline"
     from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'alerts@recruitmentalert.com.ng')
 
     match_count = 0
@@ -193,7 +196,11 @@ def notify_job_watchers(alert) -> int:
                 target_alert_ids.add(linked_alert.id)
             prev = prev.previous_event
 
-    matching_watches = watches.filter(alert_id__in=target_alert_ids)
+    # Build one efficient query: filter on alert_id directly with full select_related
+    matching_watches = TelegramJobWatch.objects.filter(
+        alert_id__in=target_alert_ids,
+        is_active=True,
+    ).select_related('user', 'alert__agency')
     if not matching_watches.exists():
         return 0
 

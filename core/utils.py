@@ -21,27 +21,53 @@ def compute_content_hash(content: str) -> str:
 
 def extract_root_domain(url: str) -> Optional[str]:
     """
-    Extract the root domain from a URL.
-    
+    Extract the root (registrable) domain from a URL.
+
+    Handles second-level domains (.gov.ng, .com.ng, .org.ng, .edu.ng etc.)
+    correctly regardless of subdomain depth.
+
     Examples:
-        https://recruitment.customs.gov.ng/apply → customs.gov.ng
-        https://customs.gov.ng.application.com/  → application.com  (fake!)
-        https://nnpcgroup.com/careers/            → nnpcgroup.com
+        https://recruitment.customs.gov.ng/apply    → customs.gov.ng
+        https://portal.recruitment.customs.gov.ng/  → customs.gov.ng  (deep subdomain fixed)
+        https://customs.gov.ng.application.com/     → application.com  (fake domain — correctly identified)
+        https://nnpcgroup.com/careers/               → nnpcgroup.com
     """
+    # Known second-level domain segments used in Nigerian and common TLDs
+    _SECOND_LEVEL = frozenset({'gov', 'com', 'org', 'edu', 'net', 'mil', 'co', 'ac'})
+
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname or ''
         if not hostname:
             return None
-        # Split and take last 2 or 3 parts (handles .gov.ng, .com.ng etc.)
+
         parts = hostname.split('.')
-        if len(parts) >= 3 and parts[-2] in ('gov', 'com', 'org', 'edu', 'net'):
-            # e.g. customs.gov.ng → ['customs', 'gov', 'ng'] → gov.ng
-            return '.'.join(parts[-3:]) if parts[-3] not in ('www',) else '.'.join(parts[-3:])
-        return '.'.join(parts[-2:]) if len(parts) >= 2 else hostname
+        # Need at least 2 parts to form a domain
+        if len(parts) < 2:
+            return hostname
+
+        tld = parts[-1]          # e.g. 'ng', 'com'
+        sld = parts[-2]          # e.g. 'gov', 'customs'
+
+        if sld in _SECOND_LEVEL and len(parts) >= 3:
+            # This is a compound TLD like gov.ng, com.ng.
+            # The registrable domain is parts[-3].gov.ng
+            # Any further sub-parts are subdomains.
+            registrable = parts[-3]
+            if registrable == 'www' and len(parts) >= 4:
+                registrable = parts[-4]
+            return f"{registrable}.{sld}.{tld}"
+
+        # Simple TLD (e.g. .com, .net)
+        registrable = sld
+        if registrable == 'www' and len(parts) >= 3:
+            registrable = parts[-3]
+        return f"{registrable}.{tld}"
+
     except Exception as exc:
         logger.warning(f"Failed to extract root domain from {url}: {exc}")
         return None
+
 
 
 def is_https(url: str) -> bool:

@@ -76,7 +76,11 @@ def portal_check(self, portal_id: int):
             from apps.monitor.scraper import scrape_portal as raw_scrape_portal
             content, status_code, response_time_ms = raw_scrape_portal(portal.url, method=portal.scrape_method, is_blocked=is_firewall_blocked)
 
-        content = content.replace('\x00', '') if content else ''
+        # Strip NUL bytes and any other characters that PostgreSQL/SQLite reject.
+        # A simple .replace('\x00', '') misses surrogates and other invalid codepoints
+        # that BeautifulSoup can introduce when parsing binary responses as text.
+        import re as _re
+        content = _re.sub(r'[\x00\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]', '', content) if content else ''
         content_type = getattr(scraper, 'last_content_type', '')
         # HTTP 200 (2xx/3xx) must always result in ONLINE status (unless explicit CAPTCHA).
         # OFFLINE status triggers ONLY on HTTP status codes 4xx, 5xx, timeouts, connection refused, or DNS failures.
@@ -127,7 +131,7 @@ def portal_check(self, portal_id: int):
         portal.check_interval_minutes = portal.calculate_backoff_interval_minutes()
         portal.poll_interval = portal.check_interval_minutes * 60
 
-        if portal.consecutive_failures >= 10:
+        if portal.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
             portal.status = PortalStatus.DEGRADED
             portal.health_status = HealthStatus.DEGRADED
             logger.warning(
@@ -235,13 +239,20 @@ def portal_check(self, portal_id: int):
     # else: first-ever snapshot : just establish baseline, nothing to compare yet.
 
     # ── Compute uptime from the last 100 snapshots (single aggregate query) ──
-    # Previously iterated 100 Python objects; now one SQL COUNT with a filter.
-    agg = Snapshot.objects.filter(portal=portal).order_by('-created_at')[:100].aggregate(
-        total=Count('id'),
-        ok=Count('id', filter=Q(status_code__isnull=False, status_code__lt=400)),
+    # Django ORM does NOT support .aggregate() on a sliced queryset. Fetch the
+    # last 100 snapshot IDs first, then aggregate on that unsliced queryset.
+    recent_snap_ids = list(
+        Snapshot.objects.filter(portal=portal)
+        .order_by('-created_at')
+        .values_list('id', flat=True)[:100]
     )
-    if agg['total']:
-        portal.uptime_percentage = Decimal(str(round(agg['ok'] / agg['total'] * 100, 2)))
+    if recent_snap_ids:
+        agg = Snapshot.objects.filter(id__in=recent_snap_ids).aggregate(
+            total=Count('id'),
+            ok=Count('id', filter=Q(status_code__isnull=False, status_code__lt=400)),
+        )
+        if agg['total']:
+            portal.uptime_percentage = Decimal(str(round(agg['ok'] / agg['total'] * 100, 2)))
 
     # Update response time on the Portal model (API reads this, not just Snapshot)
     portal.response_time_ms = response_time_ms
@@ -254,11 +265,13 @@ def portal_check(self, portal_id: int):
         'uptime_percentage', 'response_time_ms',
     ])
 
-    # Save current snapshot
+    # Strip all NUL bytes and invalid characters before writing to DB.
+    import re as _re
+    clean_text = _re.sub(r'[\x00\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]', '', normalized_text) if normalized_text else ''
     Snapshot.objects.create(
         portal=portal,
         content_hash=content_hash,
-        raw_content=normalized_text.replace('\x00', '') if normalized_text else '',
+        raw_content=clean_text,
         status_code=status_code,
         response_time_ms=response_time_ms,
         scrape_method_used=portal.scrape_method,

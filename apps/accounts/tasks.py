@@ -15,7 +15,7 @@ def cleanup_inactive_users():
     
     inactive_users = TelegramUser.objects.filter(
         state=UserState.ACTIVE,
-        last_active__lt=cutoff
+        last_active_at__lt=cutoff
     )
     count = inactive_users.count()
     if count > 0:

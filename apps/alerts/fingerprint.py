@@ -50,8 +50,18 @@ def generate_fingerprint(
 ) -> str:
     """
     Generate a deterministic SHA-256 fingerprint from CORE recruitment identifying data.
-    ONLY includes: agency, title, positions, url (NOT deadline).
-    This allows deadline changes to be detected as updates, not new recruitments.
+    Includes: agency, title, url.
+    Deliberately EXCLUDES: deadline and positions.
+
+    Exclusion rationale:
+    - Deadline changes (extensions) should produce update events, not new recruitments.
+    - Position changes (more roles added) should produce update events too.
+    Both fields are tracked in detect_update() for change detection.
+
+    Note: two different agencies posting identical job titles at the same URL
+    will share a fingerprint. This is acceptable — the URL itself should be
+    unique per agency's recruitment portal.
+
     Returns 64-character hex string.
     """
     normalized = normalize_recruitment_data(title, deadline, positions, url, agency_name)
@@ -65,6 +75,25 @@ url={normalized['url']}"""
     fingerprint = hashlib.sha256(payload.encode('utf-8')).hexdigest()
     logger.debug(f"Generated fingerprint: {fingerprint}")
     return fingerprint
+
+
+def _classify_deadline_change(old_deadline: str, new_deadline: str) -> str:
+    """
+    Determine whether a deadline change represents an extension (moved to a later date)
+    or just a change (different but not necessarily later).
+
+    Parses both strings as dates; falls back to 'deadline_changed' if parsing fails.
+    Fixes the old string-length heuristic which misclassified e.g.
+    '31 March 2026' (14 chars) > '1 April 2027' (13 chars) as an extension.
+    """
+    from dateutil import parser as date_parser
+    try:
+        old_dt = date_parser.parse(old_deadline, dayfirst=True)
+        new_dt = date_parser.parse(new_deadline, dayfirst=True)
+        return 'deadline_extended' if new_dt > old_dt else 'deadline_changed'
+    except Exception:
+        # Cannot parse as date — fall back to a neutral label
+        return 'deadline_changed'
 
 
 def _is_unspecified_deadline(d: str) -> bool:
@@ -108,7 +137,7 @@ def detect_update(
             changes['deadline'] = {
                 'old': old_deadline,
                 'new': new_deadline,
-                'type': 'deadline_extended' if len(new_deadline) > len(old_deadline) else 'deadline_changed'
+                'type': _classify_deadline_change(old_deadline, new_deadline),
             }
     
     # Check positions (can change - more positions added, etc)

@@ -307,7 +307,10 @@ class Portal(models.Model):
     def is_due_for_check(self) -> bool:
         """
         Returns True if this portal is active, not under maintenance,
-        and its last check was longer ago than its check_interval_minutes (with 30s grace window).
+        and its last check was longer ago than its configured check interval.
+
+        A 30-second positive tolerance is added to absorb scheduler jitter — 
+        a portal becomes due AT interval, not before.
         """
         if not self.is_active or self.health_status == HealthStatus.MAINTENANCE:
             return False
@@ -316,4 +319,7 @@ class Portal(models.Model):
         from django.utils import timezone
         interval_secs = self.poll_interval if self.poll_interval else (self.check_interval_minutes * 60)
         elapsed_secs = (timezone.now() - self.last_checked_at).total_seconds()
+        # Due when elapsed >= (interval - 30s). The -30s tolerance absorbs
+        # scheduler jitter: a portal that fires slightly early is better than
+        # one that gets permanently skipped due to timing drift.
         return elapsed_secs >= (interval_secs - 30)

@@ -98,12 +98,18 @@ def validate_and_sanitize_deadline(deadline_str: str) -> str:
             logger.info(f"Ignoring expired deadline '{deadline_str}' (year {max(years_found)} < current year {current_year}).")
             return "Not Specified"
 
-    # Reject strings like "31 of 1993" or generic non-dates
+    # Reject strings like "31 of 1993" or generic non-dates.
+    # But preserve known legitimate Nigerian government deadline phrases.
     has_letters = bool(re.search(r'[a-zA-Z]', deadline_str))
     if has_letters:
         has_month = bool(re.search(MONTH_PATTERN, deadline_str, re.IGNORECASE))
         relative_match = re.search(r'\b\d+\s+(?:days?|weeks?|months?)\b', deadline_str, re.IGNORECASE)
-        if not has_month and not relative_match:
+        # Allow known ambiguous-but-valid phrases used by Nigerian government portals
+        legit_phrases = re.search(
+            r'\b(q[1-4]\s*\d{4}|fy\s*\d{4}|open\s+until|tbd|continuous|rolling|until\s+filled|see\s+portal|see\s+website)\b',
+            deadline_str, re.IGNORECASE
+        )
+        if not has_month and not relative_match and not legit_phrases:
             return "Not Specified"
 
     # Truncate clean whitespace

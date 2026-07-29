@@ -256,19 +256,33 @@ class JobListView(APIView):
         )
 
         # ── Deduplication: Return only the latest Alert per recruitment fingerprint / title ──
+        # Bucket 1: Alerts linked to a recruitment_event WITH a fingerprint
         latest_event_ids = (
-            qs.filter(recruitment_event__fingerprint__isnull=False)
+            qs.filter(recruitment_event__isnull=False, recruitment_event__fingerprint__isnull=False)
             .values('recruitment_event__fingerprint')
             .annotate(max_id=Max('id'))
             .values_list('max_id', flat=True)
         )
-        latest_title_ids = (
-            qs.filter(recruitment_event__fingerprint__isnull=True)
+        # Bucket 2: Alerts linked to a recruitment_event WITHOUT a fingerprint
+        latest_no_fp_ids = (
+            qs.filter(recruitment_event__isnull=False, recruitment_event__fingerprint__isnull=True)
             .values('agency_id', 'title')
             .annotate(max_id=Max('id'))
             .values_list('max_id', flat=True)
         )
-        latest_ids = set(latest_event_ids).union(set(latest_title_ids))
+        # Bucket 3: Alerts with NO recruitment_event (manually created / legacy)
+        # These are included directly — no fingerprint-based dedup needed.
+        latest_no_event_ids = (
+            qs.filter(recruitment_event__isnull=True)
+            .values('agency_id', 'title')
+            .annotate(max_id=Max('id'))
+            .values_list('max_id', flat=True)
+        )
+        latest_ids = (
+            set(latest_event_ids)
+            .union(set(latest_no_fp_ids))
+            .union(set(latest_no_event_ids))
+        )
         qs = qs.filter(id__in=latest_ids).select_related('agency', 'portal').order_by('-created_at')
 
         # ── Filters ────────────────────────────────────────────────────────────
@@ -459,7 +473,8 @@ class JobAiSummaryView(APIView):
         except Alert.DoesNotExist:
             return Response({'detail': 'Job not found.'}, status=http_status.HTTP_404_NOT_FOUND)
 
-        content = alert.raw_text or alert.description or alert.title or ""
+        # content_excerpt is the correct field storing scraped text on the Alert model.
+        content = alert.content_excerpt or alert.title or ""
         agency_name = alert.agency.name if alert.agency else ""
         source_url = alert.source_url or ""
 
@@ -580,7 +595,10 @@ class LiveFeedView(APIView):
             if snap.triggered_alert:
                 event_type = 'new_opening'
             elif snap.has_change:
-                event_type = 'verified'
+                # has_change = page content changed, but recruitment keywords did NOT match.
+                # This is a generic portal change (nav update, cookie banner, etc.), NOT a
+                # verified recruitment. Label it accurately.
+                event_type = 'portal_change'
             elif snap.status_code and snap.status_code >= 400:
                 event_type = 'urgent'
             else:
@@ -643,7 +661,9 @@ class PublicAuditLogView(APIView):
                     'timestamp': s.created_at.isoformat() if s.created_at else None,
                     'status_code': s.status_code or 200,
                     'result': result_status,
-                    'recruitment_detected': bool(s.has_change),
+                    # triggered_alert=True only when recruitment keywords matched — accurate.
+                    # has_change fires for any page change (nav updates, banners, etc.).
+                    'recruitment_detected': bool(s.triggered_alert),
                 })
 
         total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 1
@@ -1029,12 +1049,18 @@ class AdminVerifyAlertView(APIView):
 
     def post(self, request, pk):
         from apps.alerts.models import Alert, AlertStatus
+        from apps.alerts.services import supersede_older_alerts
+        from apps.notifications.tasks import dispatch_alert
         alert = get_object_or_404(Alert, pk=pk)
         alert.is_verified = True
         alert.status = AlertStatus.APPROVED
         alert.verified_by = request.user
         alert.verified_at = timezone.now()
-        alert.save()
+        # Use update_fields to avoid race conditions with concurrent portal checks
+        alert.save(update_fields=['is_verified', 'status', 'verified_by', 'verified_at'])
+        # Supersede older alerts for the same fingerprint / title and dispatch notifications
+        supersede_older_alerts(alert)
+        dispatch_alert.delay(alert.pk)
         return Response({'status': 'verified', 'alert_id': alert.pk})
 
 
@@ -1045,7 +1071,8 @@ class AdminRejectAlertView(APIView):
         from apps.alerts.models import Alert, AlertStatus
         alert = get_object_or_404(Alert, pk=pk)
         alert.status = AlertStatus.REJECTED
-        alert.save()
+        # Use update_fields to avoid race conditions with concurrent portal checks
+        alert.save(update_fields=['status'])
         return Response({'status': 'rejected', 'alert_id': alert.pk})
 
 
@@ -1274,25 +1301,32 @@ class GoogleAuthView(APIView):
         # Method 2: Google tokeninfo API endpoint
         if not id_info:
             try:
-                url = f"https://oauth2.googleapis.com/tokeninfo?id_token={token}"
-                req_obj = urllib.request.Request(url, headers={"User-Agent": "GovAlert/1.0"})
-                with urllib.request.urlopen(req_obj, timeout=6) as resp:
-                    if resp.status == 200:
-                        id_info = json.loads(resp.read().decode('utf-8'))
+                import requests
+                from urllib.parse import quote
+                safe_token = quote(token)
+                url = f"https://oauth2.googleapis.com/tokeninfo?id_token={safe_token}"
+                resp = requests.get(url, headers={"User-Agent": "GovAlert/1.0"}, timeout=6, verify=True)
+                if resp.status_code == 200:
+                    id_info = resp.json()
             except Exception as e2:
                 logger.warning("Google tokeninfo endpoint failed: %s", e2)
 
         # Method 3: Google userinfo API endpoint (for access_token)
         if not id_info:
             try:
+                import requests
                 url = "https://www.googleapis.com/oauth2/v3/userinfo"
-                req_obj = urllib.request.Request(url, headers={
-                    "Authorization": f"Bearer {token}",
-                    "User-Agent": "GovAlert/1.0"
-                })
-                with urllib.request.urlopen(req_obj, timeout=6) as resp:
-                    if resp.status == 200:
-                        id_info = json.loads(resp.read().decode('utf-8'))
+                resp = requests.get(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "User-Agent": "GovAlert/1.0"
+                    },
+                    timeout=6,
+                    verify=True
+                )
+                if resp.status_code == 200:
+                    id_info = resp.json()
             except Exception as e3:
                 logger.warning("Google userinfo endpoint failed: %s", e3)
 

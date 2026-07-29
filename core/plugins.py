@@ -47,7 +47,7 @@ class RequestsScraper(BaseScraperBackend):
         'Upgrade-Insecure-Requests': '1',
     }
 
-    def scrape(self, url: str) -> tuple[str, int, int]:
+    def scrape(self, url: str, is_blocked: bool = False) -> tuple[str, int, int]:
         import random
         import requests
         import time
@@ -57,6 +57,22 @@ class RequestsScraper(BaseScraperBackend):
         validate_outbound_url(url)
 
         headers = {**self._HEADERS_BASE, 'User-Agent': random.choice(_USER_AGENTS)}
+
+        # When the portal is known to be firewall-blocked, apply anti-blocking measures:
+        # randomized delay and additional header spoofing to reduce bot fingerprinting.
+        if is_blocked:
+            delay = random.uniform(3.0, 8.0)
+            logger.info(f"RequestsScraper: applying {delay:.2f}s anti-block delay for {url}")
+            time.sleep(delay)
+            headers.update({
+                'Referer': 'https://www.google.com/',
+                'Cache-Control': 'max-age=0',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'cross-site',
+                'Sec-Fetch-User': '?1',
+            })
+
         timeout = 15
         start_time = time.time()
         last_exc = None
@@ -101,19 +117,19 @@ class RequestsScraper(BaseScraperBackend):
 
 class PlaywrightScraper(BaseScraperBackend):
     def scrape(self, url: str) -> tuple[str, int, int]:
-        from apps.monitor.scraper import scrape_portal
+        from apps.monitor.scraper import scrape_portal, _scrape_local
         # Fall back to existing scraping implementation
         content, code, duration = scrape_portal(url, "PLAYWRIGHT")
-        self.last_content_type = getattr(scrape_portal, 'last_content_type', 'text/html')
+        self.last_content_type = getattr(_scrape_local, 'last_content_type', 'text/html')
         return content.replace('\x00', '') if content else '', code, duration
 
 
 class PDFScraper(BaseScraperBackend):
     def scrape(self, url: str) -> tuple[str, int, int]:
-        from apps.monitor.scraper import scrape_portal
+        from apps.monitor.scraper import scrape_portal, _scrape_local
         # Fall back to existing scraping implementation
         content, code, duration = scrape_portal(url, "PDF")
-        self.last_content_type = getattr(scrape_portal, 'last_content_type', 'application/pdf')
+        self.last_content_type = getattr(_scrape_local, 'last_content_type', 'application/pdf')
         return content.replace('\x00', '') if content else '', code, duration
 
 
@@ -187,6 +203,9 @@ def get_scraper_backend(method: str) -> BaseScraperBackend:
         return PlaywrightScraper()
     elif method == "PDF":
         return PDFScraper()
+    # 'HTTP' and 'REQUESTS' (DB default) both use the requests-based scraper.
+    # Any unrecognised method also falls back to RequestsScraper so the portal
+    # gets one attempt rather than a hard crash.
     return RequestsScraper()
 
 

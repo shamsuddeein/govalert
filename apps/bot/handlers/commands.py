@@ -368,14 +368,15 @@ def format_agencies_message(agencies):
 
 def handle_agencies(message: dict):
     """Show list of all monitored agencies with portal status."""
-    from apps.agencies.models import Agency
+    from apps.agencies.models import Agency, PortalStatus
     from apps.notifications.sender import send_message
     chat_id = message['chat']['id']
     agencies_qs = Agency.objects.filter(is_active=True).prefetch_related('portals').order_by('acronym')
-    
+
     agencies_list = list(agencies_qs)
+    online_statuses = {PortalStatus.ONLINE, PortalStatus.UP, 'ONLINE', 'UP'}
     for agency in agencies_list:
-        is_online = any(p.status in ['ONLINE', 'UP'] for p in agency.portals.all())
+        is_online = any(p.status in online_statuses for p in agency.portals.all())
         agency.status = "online" if is_online else "offline"
         
     text = format_agencies_message(agencies_list)

@@ -1,5 +1,6 @@
 import logging
 import random
+import threading
 import time
 import requests
 from django.conf import settings
@@ -7,6 +8,12 @@ from core.exceptions import ScraperException
 from core.security import validate_outbound_url, MAX_RESPONSE_BYTES
 
 logger = logging.getLogger(__name__)
+
+# Thread-local storage for scrape_portal.last_content_type.
+# Using a function attribute (scrape_portal.last_content_type = ...) is not
+# thread-safe under gevent/eventlet workers. threading.local() gives each
+# thread its own isolated copy.
+_scrape_local = threading.local()
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -116,10 +123,13 @@ def scrape_portal(url: str, method: str = 'HTTP', is_blocked: bool = False, cust
 
     start_time = time.time()
 
-    if method == 'HTTP':
+    if method in ('HTTP', 'REQUESTS'):
+        # 'REQUESTS' is the database default value for ScrapeMethod.REQUESTS.
+        # Both route to the same HTTP-with-impersonation path.
         try:
             response = _http_get_with_impersonation(url, headers=headers, timeout=30)
             scrape_portal.last_content_type = response.headers.get('Content-Type', '')
+            _scrape_local.last_content_type = response.headers.get('Content-Type', '')
             response_time_ms = int((time.time() - start_time) * 1000)
             content = response.text.replace('\x00', '') if response.text else ''
             return content, response.status_code, response_time_ms
@@ -136,6 +146,7 @@ def scrape_portal(url: str, method: str = 'HTTP', is_blocked: bool = False, cust
             response = _http_get_with_impersonation(url, headers=headers, timeout=20)
             if response.status_code == 200:
                 scrape_portal.last_content_type = response.headers.get('Content-Type', '')
+                _scrape_local.last_content_type = response.headers.get('Content-Type', '')
                 response_time_ms = int((time.time() - start_time) * 1000)
                 content = response.text.replace('\x00', '')
                 return content, 200, response_time_ms
@@ -185,6 +196,7 @@ def scrape_portal(url: str, method: str = 'HTTP', is_blocked: bool = False, cust
             try:
                 response = _http_get_with_impersonation(url, headers=headers, timeout=30)
                 scrape_portal.last_content_type = response.headers.get('Content-Type', '')
+                _scrape_local.last_content_type = response.headers.get('Content-Type', '')
                 response_time_ms = int((time.time() - start_time) * 1000)
                 content = response.text.replace('\x00', '') if response.text else ''
                 return content, response.status_code, response_time_ms
@@ -192,6 +204,12 @@ def scrape_portal(url: str, method: str = 'HTTP', is_blocked: bool = False, cust
                 raise
             except Exception as req_err:
                 raise ScraperException(f"PDF failed and fallback HTTP failed: {str(req_err)}")
+
+    elif method in ('RSS', 'API'):
+        raise ScraperException(
+            f"Scrape method '{method}' is defined in the model but has no implementation. "
+            f"Assign a working method (HTTP, REQUESTS, PLAYWRIGHT, or PDF) to portal '{url}'."
+        )
 
     else:
         raise ScraperException(f"Unsupported scrape method: {method}")
