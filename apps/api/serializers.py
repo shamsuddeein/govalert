@@ -245,12 +245,16 @@ class JobListSerializer(serializers.ModelSerializer):
     official_url = serializers.CharField(source='source_url', read_only=True)
     published_at = serializers.DateTimeField(source='created_at', read_only=True)
 
+    trust_category = serializers.CharField(read_only=True)
+    decision_source = serializers.CharField(read_only=True)
+    verification_note = serializers.SerializerMethodField()
+
     class Meta:
         model = Alert
         fields = [
             'ref', 'title', 'agency_name', 'agency_acronym', 'agency_slug',
-            'deadline', 'status', 'positions',
-            'published_at', 'category', 'location_state', 'official_url',
+            'deadline', 'status', 'trust_category', 'decision_source', 'verification_note',
+            'positions', 'published_at', 'category', 'location_state', 'official_url',
         ]
 
     def get_ref(self, obj):
@@ -263,6 +267,14 @@ class JobListSerializer(serializers.ModelSerializer):
         if obj.portal:
             return obj.portal.location_state or 'Federal'
         return 'Federal'
+
+    def get_verification_note(self, obj):
+        cat = obj.trust_category or ''
+        if cat == 'LIKELY' or (not cat and 70 <= obj.trust_score < 90):
+            return "Confirm details on the official portal before applying"
+        elif cat == 'UNCONFIRMED' or (not cat and 50 <= obj.trust_score < 70):
+            return "Unconfirmed — Detected but not fully verified"
+        return None
 
 
 class ConfidenceFactorSerializer(serializers.Serializer):
@@ -494,6 +506,7 @@ class AdminAlertDetailSerializer(serializers.ModelSerializer):
             'portal_name', 'portal_url', 'deadline', 'deadline_validation', 'positions',
             'requirements', 'source_url', 'content_excerpt', 'trust_score',
             'trust_score_overridden_by', 'trust_score_overridden_at',
+            'trust_category', 'decision_source',
             'ai_classification', 'ai_confidence', 'ai_red_flags', 'status',
             'is_verified', 'verified_by', 'verified_at', 'admin_notes',
             'report_count', 'created_at', 'recruitment_event',

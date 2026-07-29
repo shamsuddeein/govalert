@@ -1054,10 +1054,11 @@ class AdminVerifyAlertView(APIView):
         alert = get_object_or_404(Alert, pk=pk)
         alert.is_verified = True
         alert.status = AlertStatus.APPROVED
+        alert.decision_source = 'HUMAN'
         alert.verified_by = request.user
         alert.verified_at = timezone.now()
         # Use update_fields to avoid race conditions with concurrent portal checks
-        alert.save(update_fields=['is_verified', 'status', 'verified_by', 'verified_at'])
+        alert.save(update_fields=['is_verified', 'status', 'decision_source', 'verified_by', 'verified_at'])
         # Supersede older alerts for the same fingerprint / title and dispatch notifications
         supersede_older_alerts(alert)
         dispatch_alert.delay(alert.pk)
@@ -1071,8 +1072,9 @@ class AdminRejectAlertView(APIView):
         from apps.alerts.models import Alert, AlertStatus
         alert = get_object_or_404(Alert, pk=pk)
         alert.status = AlertStatus.REJECTED
+        alert.decision_source = 'HUMAN'
         # Use update_fields to avoid race conditions with concurrent portal checks
-        alert.save(update_fields=['status'])
+        alert.save(update_fields=['status', 'decision_source'])
         return Response({'status': 'rejected', 'alert_id': alert.pk})
 
 
@@ -1715,6 +1717,7 @@ class CustomAdminAlertApproveView(APIView):
 
         alert.status = AlertStatus.APPROVED
         alert.is_verified = True
+        alert.decision_source = 'HUMAN'
         alert.verified_by = request.user
         alert.verified_at = now
 
@@ -1726,7 +1729,7 @@ class CustomAdminAlertApproveView(APIView):
             else:
                 alert.admin_notes = formatted_note
 
-        alert.save(update_fields=['status', 'is_verified', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
+        alert.save(update_fields=['status', 'is_verified', 'decision_source', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
 
         from apps.alerts.services import supersede_older_alerts
         supersede_older_alerts(alert)
@@ -1773,6 +1776,7 @@ class CustomAdminAlertRejectView(APIView):
 
         now = timezone.now()
         alert.status = AlertStatus.REJECTED
+        alert.decision_source = 'HUMAN'
         alert.verified_by = request.user
         alert.verified_at = now
 
@@ -1788,7 +1792,7 @@ class CustomAdminAlertRejectView(APIView):
             from apps.agencies.models import Agency
             Agency.objects.filter(pk=alert.agency_id).update(false_positives=F('false_positives') + 1)
 
-        alert.save(update_fields=['status', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
+        alert.save(update_fields=['status', 'decision_source', 'verified_by', 'verified_at', 'admin_notes', 'updated_at'])
 
         serializer = AdminAlertDetailSerializer(alert)
         return Response({

@@ -283,17 +283,24 @@ class Alert(models.Model):
     def __str__(self):
         return f"[{self.agency.acronym}] {self.event_type} : Trust {self.trust_score} : {self.created_at.date()}"
 
-    @property
-    def trust_category(self) -> str:
-        if self.trust_score >= 90:
-            return 'VERIFIED OFFICIAL'
-        elif self.trust_score >= 70:
-            return 'LIKELY OFFICIAL'
-        elif self.trust_score >= 50:
-            return 'UNCONFIRMED'
-        elif self.trust_score >= 30:
-            return 'SUSPICIOUS'
-        return 'FLAGGED AS FAKE'
+    # ── Automated Decision Tracking ───────────────────────────────────────────
+    trust_category = models.CharField(
+        max_length=20,
+        choices=[
+            ('VERIFIED', 'Verified Official'),
+            ('LIKELY', 'Likely Official'),
+            ('UNCONFIRMED', 'Unconfirmed'),
+            ('SUSPICIOUS', 'Suspicious/Fake'),
+        ],
+        null=True, blank=True,
+        help_text="Automated classification tier: VERIFIED (90-100), LIKELY (70-89), UNCONFIRMED (50-69), SUSPICIOUS (0-49)"
+    )
+    decision_source = models.CharField(
+        max_length=20,
+        choices=[('AUTO', 'Automated'), ('HUMAN', 'Manual Review')],
+        default='HUMAN',
+        help_text="Distinguishes automated decision (AUTO) from manual admin decision (HUMAN)"
+    )
 
 
 class AlertActionType(models.TextChoices):

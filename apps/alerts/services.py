@@ -319,14 +319,86 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     except Exception as exc:
         logger.warning(f"Failed to post to event channel: {exc}")
 
-    # Approval is intentionally a separate human action. The admin approval
-    # endpoint dispatches both new openings and update events.
-    if alert.status == AlertStatus.APPROVED:
-        supersede_older_alerts(alert)
-        if alert_created:
-            dispatch_alert.delay(alert.id)
+    # Apply 4-tier automated decision pipeline based on trust_score and AI classification
+    apply_automated_decision(alert)
 
     return alert
+
+
+def publish_alert(alert: Alert) -> None:
+    """
+    Publish an approved alert: supersede older alerts for the same fingerprint/title
+    and dispatch notification tasks to subscribers.
+    Identical to the publication path executed upon manual admin approval.
+    """
+    from apps.notifications.tasks import dispatch_alert
+    supersede_older_alerts(alert)
+    dispatch_alert.delay(alert.id)
+
+
+def apply_automated_decision(alert: Alert) -> None:
+    """
+    4-Tier Automated Decision Pipeline:
+    - Score 90-100 (VERIFIED): Auto-published immediately
+    - Score 70-89  (LIKELY): Auto-published immediately
+    - Score 50-69  (UNCONFIRMED): Auto-published immediately
+    - Score 0-49   (SUSPICIOUS): NOT published, status=PENDING, decision_source='AUTO', routed to human review queue
+
+    NON-NEGOTIABLE RULE:
+    If trust_score is None OR ai_classification == 'UNCERTAIN' OR missing/failed classification,
+    set status='PENDING', decision_source='HUMAN'. NEVER auto-publish.
+    """
+    from django.utils import timezone
+    from apps.alerts.models import AlertStatus
+
+    # Non-negotiable rule: failed/uncertain classification must go to human review queue
+    if alert.trust_score is None or alert.ai_classification == 'UNCERTAIN' or not alert.ai_classification:
+        alert.trust_category = None
+        alert.status = AlertStatus.PENDING
+        alert.decision_source = 'HUMAN'
+        alert.save(update_fields=['trust_category', 'status', 'decision_source'])
+        logger.info(f"Automated decision: Alert #{alert.id} ({alert.title}) has failed/uncertain AI classification. Routed to human review queue.")
+        return
+
+    score = alert.trust_score
+
+    if score >= 90:
+        alert.trust_category = 'VERIFIED'
+        alert.status = AlertStatus.APPROVED
+        alert.is_verified = True
+        alert.decision_source = 'AUTO'
+        alert.verified_at = timezone.now()
+        alert.save(update_fields=['trust_category', 'status', 'is_verified', 'decision_source', 'verified_at'])
+        logger.info(f"Automated decision: Alert #{alert.id} auto-published as TIER 1 VERIFIED (score={score}).")
+        publish_alert(alert)
+
+    elif score >= 70:
+        alert.trust_category = 'LIKELY'
+        alert.status = AlertStatus.APPROVED
+        alert.is_verified = True
+        alert.decision_source = 'AUTO'
+        alert.verified_at = timezone.now()
+        alert.save(update_fields=['trust_category', 'status', 'is_verified', 'decision_source', 'verified_at'])
+        logger.info(f"Automated decision: Alert #{alert.id} auto-published as TIER 2 LIKELY (score={score}).")
+        publish_alert(alert)
+
+    elif score >= 50:
+        alert.trust_category = 'UNCONFIRMED'
+        alert.status = AlertStatus.APPROVED
+        alert.is_verified = True
+        alert.decision_source = 'AUTO'
+        alert.verified_at = timezone.now()
+        alert.save(update_fields=['trust_category', 'status', 'is_verified', 'decision_source', 'verified_at'])
+        logger.info(f"Automated decision: Alert #{alert.id} auto-published as TIER 3 UNCONFIRMED (score={score}).")
+        publish_alert(alert)
+
+    else:
+        alert.trust_category = 'SUSPICIOUS'
+        alert.status = AlertStatus.PENDING  # Blocked from auto-publishing & routed to human review queue
+        alert.decision_source = 'AUTO'
+        alert.save(update_fields=['trust_category', 'status', 'decision_source'])
+        logger.info(f"Automated decision: Alert #{alert.id} auto-blocked as TIER 4 SUSPICIOUS (score={score}). Routed to human review queue.")
+        # Do NOT call publish_alert() here
 
 
 def reconcile_duplicate_pending_alerts() -> int:
