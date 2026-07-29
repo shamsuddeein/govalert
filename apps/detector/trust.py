@@ -12,8 +12,10 @@ def calculate_trust_score(agency: Agency, url: str, ai_confidence: int = 100, co
 
     # 1. Official Domain Match (30 pts)
     is_official = False
-    if root_domain and agency.official_domains:
-        if root_domain in agency.official_domains:
+    if root_domain and agency and agency.official_domains:
+        clean_domains = [d.lower().strip() for d in agency.official_domains if isinstance(d, str) and d.strip()]
+        root_lower = root_domain.lower().strip()
+        if any(root_lower == d or root_lower.endswith('.' + d) or d.endswith('.' + root_lower) for d in clean_domains):
             score += 30
             is_official = True
 
