@@ -82,8 +82,8 @@ def test_stale_deadline_auto_rejected_during_ingestion(mock_ai):
 @patch('apps.alerts.services.classify_recruitment_with_ai')
 def test_future_and_unspecified_deadlines_proceed_to_pending_queue(mock_ai):
     mock_ai.return_value = {
-        'classification': 'REAL',
-        'confidence': 90,
+        'classification': 'UNCERTAIN',
+        'confidence': 30,
         'event_type': 'RECRUITMENT_OPEN',
         'red_flags': [],
         'extracted': {

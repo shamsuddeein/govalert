@@ -105,7 +105,7 @@ def test_pending_alert_coalescing_and_deadline_flapping(mock_ai):
     Also verify that flapping to 'Not Specified' deadline does not create a duplicate update alert.
     """
     mock_ai.return_value = {
-        'classification': 'REAL', 'confidence': 70,
+        'classification': 'UNCERTAIN', 'confidence': 30,
         'event_type': 'RECRUITMENT_OPEN', 'red_flags': [],
         'extracted': {'positions': 'Multiple Positions', 'deadline': '30TH AUGUST 2026', 'requirements': 'Check portal'},
     }
