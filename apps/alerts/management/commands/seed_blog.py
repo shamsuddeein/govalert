@@ -38,13 +38,13 @@ govalerts_bot
 
 # Response: Done! Congratulations on your new bot.
 # Use this token to access the HTTP API:
-# 7192847192:AAH9f2kLskP19823k_ExampleTokenHere
+# YOUR_TELEGRAM_BOT_TOKEN_HERE
 ```
 
 Save your token securely in your Django `.env` file:
 
 ```bash
-TELEGRAM_BOT_TOKEN=7192847192:AAH9f2kLskP19823k_ExampleTokenHere
+TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN_HERE
 ```
 
 ---
