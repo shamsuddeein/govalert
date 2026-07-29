@@ -401,7 +401,7 @@ class JobVerificationView(APIView):
         # Confidence factors
         confidence_factors = [
             {'label': 'Official government domain', 'passed': alert.trust_score >= 60},
-            {'label': 'AI classification passed', 'passed': alert.ai_classification == 'REAL'},
+            {'label': 'Authenticity classification passed', 'passed': alert.ai_classification == 'REAL'},
             {'label': 'No fraud keywords detected', 'passed': not alert.ai_red_flags},
             {'label': 'Portal currently accessible', 'passed': bool(alert.portal and alert.portal.status == 'ONLINE')},
             {'label': 'Recruitment keywords matched', 'passed': alert.trust_score >= 50},
