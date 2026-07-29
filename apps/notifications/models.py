@@ -102,3 +102,46 @@ class PushSubscription(models.Model):
     def __str__(self):
         return f"PushSubscription → {self.endpoint[:40]}... (Active={self.is_active})"
 
+
+class WebNotification(models.Model):
+    """
+    In-dashboard notification model for registered WebUsers.
+    Stores recruitment alerts, status changes, and announcements.
+    """
+    user = models.ForeignKey(
+        'accounts.WebUser',
+        on_delete=models.CASCADE,
+        related_name='dashboard_notifications',
+    )
+    event = models.ForeignKey(
+        'alerts.RecruitmentEvent',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dashboard_notifications',
+    )
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    notification_type = models.CharField(
+        max_length=30,
+        choices=[
+            ('NEW_JOB', 'New Recruitment'),
+            ('STATUS_CHANGE', 'Status Update'),
+            ('DEADLINE_WARNING', 'Deadline Approaching'),
+            ('BROADCAST', 'Official Broadcast'),
+        ],
+        default='NEW_JOB',
+    )
+    target_url = models.CharField(max_length=500, blank=True, default='')
+    is_read = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = 'web_notifications'
+        ordering = ['-created_at']
+        verbose_name = 'Web Notification'
+        verbose_name_plural = 'Web Notifications'
+
+    def __str__(self):
+        return f"WebNotification → {self.user.email} | {self.title} | Read={self.is_read}"
+
+

@@ -76,6 +76,12 @@ public_patterns = [
     path('push/vapid-key/', views.VapidKeyView.as_view(), name='push_vapid_key'),
     path('push/subscribe/', views.PushSubscribeView.as_view(), name='push_subscribe'),
     path('push/unsubscribe/', views.PushUnsubscribeView.as_view(), name='push_unsubscribe'),
+
+    # In-Dashboard Web Notifications
+    path('notifications/', views.WebNotificationListView.as_view(), name='web_notifications_list'),
+    path('notifications/read-all/', views.WebNotificationMarkAllReadView.as_view(), name='web_notifications_read_all'),
+    path('notifications/<int:notif_id>/read/', views.WebNotificationMarkReadView.as_view(), name='web_notifications_mark_read'),
+    path('notifications/<int:notif_id>/', views.WebNotificationDeleteView.as_view(), name='web_notifications_delete'),
 ]
 
 # ── Admin v1 ──────────────────────────────────────────────────────────────────

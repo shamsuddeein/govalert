@@ -288,4 +288,42 @@ def dispatch_web_user_emails(alert) -> int:
     return sent_count
 
 
+def dispatch_web_dashboard_notifications(alert) -> int:
+    """
+    Create in-dashboard WebNotification entries for all active WebUser accounts
+    when a new recruitment alert is approved or updated.
+    """
+    from apps.accounts.models import WebUser
+    from apps.notifications.models import WebNotification
 
+    web_users = WebUser.objects.all()
+    if not web_users.exists():
+        return 0
+
+    agency_name = alert.agency.name if alert.agency else "Federal MDA"
+    agency_acronym = alert.agency.acronym if alert.agency else ""
+    title_text = alert.title or f"{agency_name} Recruitment Opening"
+    job_ref = getattr(alert, 'ref', alert.id)
+    target_url = f"/jobs/{job_ref}"
+    deadline_text = alert.deadline or "Monitor portal for updates"
+    body_text = f"Official opening detected for {agency_name} ({agency_acronym}). Deadline: {deadline_text}."
+
+    notifications_to_create = []
+    for wu in web_users:
+        notifications_to_create.append(
+            WebNotification(
+                user=wu,
+                event=getattr(alert, 'recruitment_event', None),
+                title=title_text,
+                body=body_text,
+                notification_type='NEW_JOB' if alert.event_type == 'RECRUITMENT_OPEN' else 'STATUS_CHANGE',
+                target_url=target_url,
+                is_read=False,
+            )
+        )
+
+    if notifications_to_create:
+        created = WebNotification.objects.bulk_create(notifications_to_create, ignore_conflicts=True)
+        logger.info(f"Created {len(created)} in-dashboard notifications for alert #{alert.id}.")
+        return len(created)
+    return 0

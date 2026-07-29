@@ -133,12 +133,14 @@ def dispatch_alert(alert_id: int):
         watched_users = eligible_users.filter(pk__in=watchers_user_ids)
         users = list(set(general_users).union(set(watched_users)))
 
-    # Dispatch web email notifications to registered Web users
+    # Dispatch web email & in-dashboard notifications to registered Web users
     try:
         from apps.subscriptions.services import (
-            dispatch_web_user_emails, match_keyword_subscriptions_for_alert, notify_job_watchers
+            dispatch_web_user_emails, match_keyword_subscriptions_for_alert, notify_job_watchers,
+            dispatch_web_dashboard_notifications
         )
         dispatch_web_user_emails(alert)
+        dispatch_web_dashboard_notifications(alert)
         match_keyword_subscriptions_for_alert(alert)
         if is_update:
             notify_job_watchers(alert)

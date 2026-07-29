@@ -3130,6 +3130,110 @@ class SitemapXmlView(APIView):
         return HttpResponse(xml_content, content_type="application/xml")
 
 
+# ─── Web Notification Endpoints ───────────────────────────────────────────────
+
+class WebNotificationListView(APIView):
+    """
+    GET /api/v1/notifications/
+    Returns list of in-dashboard notifications for authenticated WebUser.
+    Supports ?unread=true filter and pagination.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_web_profile(self, user):
+        profile, _ = WebUser.objects.get_or_create(user=user)
+        return profile
+
+    def get(self, request):
+        from apps.notifications.models import WebNotification
+        profile = self.get_web_profile(request.user)
+        queryset = WebNotification.objects.filter(user=profile).order_by('-created_at')
+
+        unread_only = request.query_params.get('unread')
+        if unread_only and unread_only.lower() in ('true', '1'):
+            queryset = queryset.filter(is_read=False)
+
+        unread_count = WebNotification.objects.filter(user=profile, is_read=False).count()
+
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 20))
+        total_count = queryset.count()
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        items = queryset[start:end]
+
+        results = [
+            {
+                'id': n.pk,
+                'title': n.title,
+                'body': n.body,
+                'notification_type': n.notification_type,
+                'target_url': n.target_url,
+                'is_read': n.is_read,
+                'created_at': n.created_at.isoformat(),
+            }
+            for n in items
+        ]
+
+        return Response({
+            'count': total_count,
+            'unread_count': unread_count,
+            'page': page,
+            'page_size': page_size,
+            'results': results,
+        })
+
+
+class WebNotificationMarkReadView(APIView):
+    """
+    POST /api/v1/notifications/<id>/read/
+    Marks a single notification as read.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, notif_id):
+        from apps.notifications.models import WebNotification
+        try:
+            notif = WebNotification.objects.get(pk=notif_id, user__user=request.user)
+            notif.is_read = True
+            notif.save(update_fields=['is_read'])
+            return Response({'detail': 'Notification marked as read.', 'id': notif_id})
+        except WebNotification.DoesNotExist:
+            return Response({'detail': 'Notification not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+
+class WebNotificationMarkAllReadView(APIView):
+    """
+    POST /api/v1/notifications/read-all/
+    Marks all unread notifications for current user as read.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.notifications.models import WebNotification
+        updated_count = WebNotification.objects.filter(user__user=request.user, is_read=False).update(is_read=True)
+        return Response({'detail': 'All notifications marked as read.', 'updated_count': updated_count})
+
+
+class WebNotificationDeleteView(APIView):
+    """
+    DELETE /api/v1/notifications/<id>/
+    Deletes a notification item.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, notif_id):
+        from apps.notifications.models import WebNotification
+        try:
+            notif = WebNotification.objects.get(pk=notif_id, user__user=request.user)
+            notif.delete()
+            return Response({'detail': 'Notification deleted.', 'id': notif_id})
+        except WebNotification.DoesNotExist:
+            return Response({'detail': 'Notification not found.'}, status=http_status.HTTP_404_NOT_FOUND)
+
+
+
 
 
 

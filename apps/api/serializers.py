@@ -617,7 +617,8 @@ class AdminAlertCreateSerializer(serializers.ModelSerializer):
     agency_id = serializers.PrimaryKeyRelatedField(
         queryset=Agency.objects.filter(is_active=True),
         source='agency',
-        required=True
+        required=False,
+        allow_null=True,
     )
     portal_id = serializers.PrimaryKeyRelatedField(
         queryset=Portal.objects.all(),
@@ -625,6 +626,9 @@ class AdminAlertCreateSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
+    custom_agency_name = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    custom_agency_acronym = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    custom_category = serializers.CharField(required=False, allow_blank=True, write_only=True)
     notify_subscribers = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
@@ -633,12 +637,42 @@ class AdminAlertCreateSerializer(serializers.ModelSerializer):
             'agency_id', 'portal_id', 'event_type', 'title',
             'positions', 'deadline', 'requirements', 'source_url',
             'content_excerpt', 'trust_score', 'status', 'notify_subscribers',
+            'custom_agency_name', 'custom_agency_acronym', 'custom_category',
         ]
+
+    def validate(self, attrs):
+        agency = attrs.get('agency')
+        custom_name = attrs.get('custom_agency_name')
+        if not agency and not custom_name:
+            raise serializers.ValidationError({"agency_id": "Either agency_id or custom_agency_name is required."})
+        return attrs
 
     def validate_trust_score(self, value):
         if not (0 <= value <= 100):
             raise serializers.ValidationError("trust_score must be between 0 and 100.")
         return value
+
+    def create(self, validated_data):
+        custom_name = validated_data.pop('custom_agency_name', '').strip()
+        custom_acronym = validated_data.pop('custom_agency_acronym', '').strip()
+        custom_category = validated_data.pop('custom_category', 'Civil Service').strip()
+
+        agency = validated_data.get('agency')
+        if not agency and custom_name:
+            acronym = custom_acronym or ''.join(w[0].upper() for w in custom_name.split() if w)[:10]
+            agency, _ = Agency.objects.get_or_create(
+                acronym=acronym,
+                defaults={
+                    'name': custom_name,
+                    'category': custom_category or 'Civil Service',
+                    'is_active': True,
+                    'portal_url': validated_data.get('source_url', 'https://www.gov.ng'),
+                }
+            )
+            validated_data['agency'] = agency
+
+        return super().create(validated_data)
+
 
 
 
