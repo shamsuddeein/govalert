@@ -2216,9 +2216,9 @@ class CustomAdminPortalTriggerCheckView(APIView):
         except Exception as exc:
             logger.error(f"Manual portal_check failed for portal #{pk}: {exc}")
             exc_str = str(exc)
-            if "NUL" in exc_str or "0x00" in exc_str or "parse" in exc_str.lower() or "encoding" in exc_str.lower():
+            if "NUL" in exc_str or "0x00" in exc_str or "parse" in exc_str.lower() or "encoding" in exc_str.lower() or "string literal" in exc_str.lower():
                 return Response(
-                    {'detail': 'This portal returned content that could not be parsed : may not be a standard HTML page.'},
+                    {'detail': 'This portal returned content that could not be parsed — may not be a standard HTML page.'},
                     status=http_status.HTTP_422_UNPROCESSABLE_ENTITY
                 )
             return Response(

@@ -48,6 +48,8 @@ def create_alert_from_scrape(portal, content, matched_data) -> Alert | None:
     - If new or update: creates event, decision log, and alert
     - Only sends notifications for NEW events (not updates by default)
     """
+    import re as _re
+    content = _re.sub(r'[\x00\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]', '', content) if content else ''
     agency = portal.agency
 
     from apps.monitor.parser import clean_html_to_text

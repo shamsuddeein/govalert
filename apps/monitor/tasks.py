@@ -176,10 +176,13 @@ def portal_check(self, portal_id: int):
             'last_checked_at', 'status', 'health_status',
             'check_interval_minutes', 'poll_interval'
         ])
+        import re as _re
+        captcha_clean_text = clean_html_to_text(content, content_type=content_type)
+        captcha_clean_text = _re.sub(r'[\x00\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]', '', captcha_clean_text) if captcha_clean_text else ''
         Snapshot.objects.create(
             portal=portal,
-            content_hash=compute_content_hash(clean_html_to_text(content, content_type=content_type)),
-            raw_content=clean_html_to_text(content, content_type=content_type).replace('\x00', '') if content else '',
+            content_hash=compute_content_hash(captcha_clean_text),
+            raw_content=captcha_clean_text,
             status_code=status_code,
             response_time_ms=response_time_ms,
             scrape_method_used=portal.scrape_method,

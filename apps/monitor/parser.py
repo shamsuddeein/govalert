@@ -196,8 +196,8 @@ def clean_html_to_text(html_content: str, content_type: str = '') -> str:
     if not html_content:
         return ""
 
-    # Sanitize NUL bytes
-    html_content = html_content.replace('\x00', '')
+    # Sanitize NUL bytes and non-printable control characters
+    html_content = re.sub(r'[\x00\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]', '', html_content)
 
     if not isinstance(content_type, str):
         content_type = str(content_type)
@@ -205,10 +205,18 @@ def clean_html_to_text(html_content: str, content_type: str = '') -> str:
     # Check Content-Type header if provided
     if content_type and not any(ct in content_type.lower() for ct in ['text/html', 'application/xhtml+xml', 'text/plain']):
         logger.warning(f"non-HTML content ({content_type}), skipping parse")
-        return sanitise_html(html_content[:5000])
+        clean_text = html_content[:5000].replace('\x00', '')
+        return sanitise_html(clean_text)
+
+    # Check binary file signatures (PDF, zip/gzip, images)
+    if html_content.startswith(('%PDF', 'PK\x03\x04', '\x1f\x8b', '\x89PNG', 'GIF8', '\xff\xd8\xff')):
+        logger.warning("binary content signature detected, skipping parse")
+        clean_text = html_content[:5000].replace('\x00', '')
+        return sanitise_html(clean_text)
 
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', category=MarkupResemblesLocatorWarning)
+        warnings.filterwarnings('ignore', message='.*looks more like a filename.*')
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
 
@@ -231,7 +239,8 @@ def clean_html_to_text(html_content: str, content_type: str = '') -> str:
             return sanitise_html(text.replace('\x00', ''))
         except Exception as exc:
             logger.warning(f"BeautifulSoup parsing failed ({exc}), skipping parse")
-            return sanitise_html(html_content[:5000].replace('\x00', ''))
+            clean_text = html_content[:5000].replace('\x00', '')
+            return sanitise_html(clean_text)
 
 
 def analyze_diff(old_text: str, new_text: str) -> str:
