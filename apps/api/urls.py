@@ -64,6 +64,7 @@ public_patterns = [
     # Blog
     path('blog/', views.PublicBlogPostListView.as_view(), name='public_blog_list'),
     path('blog/<slug:slug>/', views.PublicBlogPostDetailView.as_view(), name='public_blog_detail'),
+    path('sitemap.xml', views.SitemapXmlView.as_view(), name='sitemap_xml'),
 
     # Health
     path('health/', views.HealthView.as_view(), name='health'),

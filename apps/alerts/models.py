@@ -346,27 +346,56 @@ class AlertAction(models.Model):
 
 class BlogPost(models.Model):
     """
-    Public and admin-managed educational blog post / scam prevention guide.
+    Public and admin-managed educational blog post / scam prevention & tech guide.
     """
+    CATEGORY_CHOICES = [
+        ('recruitment', 'Recruitment Guides'),
+        ('tech', 'Tech Guides'),
+    ]
+
     title = models.CharField(max_length=250)
-    slug = models.SlugField(max_length=250, unique=True)
-    excerpt = models.TextField(blank=True, default='')
-    content = models.TextField(help_text="Markdown format content.")
-    category = models.CharField(max_length=100, default='Scam Prevention')
+    slug = models.SlugField(max_length=250, unique=True, blank=True)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='recruitment', db_index=True)
     author = models.CharField(max_length=100, default='Shamsuddeen Yusuf')
+    excerpt = models.TextField(blank=True, default='')
+    body = models.TextField(blank=True, default='', help_text="Body content (Markdown or HTML format).")
+    content = models.TextField(blank=True, default='', help_text="Markdown format content.")
+    meta_description = models.TextField(blank=True, default='')
+    reading_time = models.PositiveIntegerField(default=1, help_text="Reading time in minutes")
     read_time = models.CharField(max_length=50, default='5 min read')
     is_published = models.BooleanField(default=True, db_index=True)
+    published_date = models.DateTimeField(default=timezone.now, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'blog_posts'
-        ordering = ['-created_at']
+        ordering = ['-published_date', '-created_at']
         verbose_name = 'Blog Post'
         verbose_name_plural = 'Blog Posts'
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        import re
+        import math
+        from django.utils.text import slugify
+
+        if not self.slug:
+            self.slug = slugify(self.title)
+
+        text = self.body or self.content or ''
+        if not self.body and self.content:
+            self.body = self.content
+        elif not self.content and self.body:
+            self.content = self.body
+
+        words = len(re.findall(r'\w+', text))
+        self.reading_time = max(1, math.ceil(words / 200))
+        self.read_time = f"{self.reading_time} min read"
+
+        super().save(*args, **kwargs)
 
 
 class RejectedDetection(models.Model):

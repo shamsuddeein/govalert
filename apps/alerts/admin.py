@@ -47,9 +47,9 @@ class AlertActionAdmin(admin.ModelAdmin):
 
 @admin.register(BlogPost)
 class BlogPostAdmin(admin.ModelAdmin):
-    list_display = ('title', 'slug', 'category', 'author', 'is_published', 'created_at')
-    list_filter = ('is_published', 'category')
-    search_fields = ('title', 'content', 'excerpt')
+    list_display = ('title', 'category', 'is_published', 'published_date', 'reading_time', 'author')
+    list_filter = ('category', 'is_published')
+    search_fields = ('title', 'body', 'content', 'meta_description')
     prepopulated_fields = {'slug': ('title',)}
-    ordering = ('-created_at',)
+    ordering = ('-published_date', '-created_at')
 

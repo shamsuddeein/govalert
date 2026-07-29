@@ -682,26 +682,36 @@ class PublicAuditLogView(APIView):
 class PublicBlogPostListView(APIView):
     """
     GET /api/v1/blog/
-    Public published blog posts list.
+    Public published blog posts list sorted by published_date desc.
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
         from apps.alerts.models import BlogPost
-        posts = BlogPost.objects.filter(is_published=True).order_by('-created_at')
+        queryset = BlogPost.objects.filter(is_published=True).order_by('-published_date', '-created_at')
+        
+        category = request.query_params.get('category')
+        if category and category.strip() and category.lower() != 'all':
+            queryset = queryset.filter(category__iexact=category.strip())
+
         results = [
             {
                 'id': p.pk,
                 'title': p.title,
                 'slug': p.slug,
-                'excerpt': p.excerpt,
-                'content': p.content,
+                'excerpt': p.excerpt or (p.body or p.content)[:180],
+                'body': p.body or p.content,
+                'content': p.body or p.content,
                 'category': p.category,
+                'category_display': p.get_category_display() if hasattr(p, 'get_category_display') else p.category,
                 'author': p.author,
+                'meta_description': p.meta_description,
+                'reading_time': p.reading_time,
                 'read_time': p.read_time,
+                'published_date': p.published_date.isoformat() if p.published_date else p.created_at.isoformat(),
                 'created_at': p.created_at.isoformat(),
             }
-            for p in posts
+            for p in queryset
         ]
         return Response({'results': results, 'count': len(results)})
 
@@ -709,7 +719,7 @@ class PublicBlogPostListView(APIView):
 class PublicBlogPostDetailView(APIView):
     """
     GET /api/v1/blog/<slug>/
-    Public single blog post detail.
+    Public single blog post detail by slug.
     """
     permission_classes = [AllowAny]
 
@@ -721,11 +731,16 @@ class PublicBlogPostDetailView(APIView):
                 'id': p.pk,
                 'title': p.title,
                 'slug': p.slug,
-                'excerpt': p.excerpt,
-                'content': p.content,
+                'excerpt': p.excerpt or (p.body or p.content)[:180],
+                'body': p.body or p.content,
+                'content': p.body or p.content,
                 'category': p.category,
+                'category_display': p.get_category_display() if hasattr(p, 'get_category_display') else p.category,
                 'author': p.author,
+                'meta_description': p.meta_description,
+                'reading_time': p.reading_time,
                 'read_time': p.read_time,
+                'published_date': p.published_date.isoformat() if p.published_date else p.created_at.isoformat(),
                 'created_at': p.created_at.isoformat(),
             })
         except BlogPost.DoesNotExist:
@@ -3082,6 +3097,37 @@ class DataSubjectDeleteView(APIView):
             'executed_at': timezone.now().isoformat(),
             'purged_counts': purged_counts,
         })
+
+
+class SitemapXmlView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from django.http import HttpResponse
+        from apps.alerts.models import BlogPost
+
+        base_url = "https://www.recruitmentalert.com.ng"
+
+        urls = [
+            f"<url><loc>{base_url}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>",
+            f"<url><loc>{base_url}/jobs</loc><changefreq>hourly</changefreq><priority>0.9</priority></url>",
+            f"<url><loc>{base_url}/agencies</loc><changefreq>daily</changefreq><priority>0.8</priority></url>",
+            f"<url><loc>{base_url}/blog</loc><changefreq>daily</changefreq><priority>0.8</priority></url>",
+            f"<url><loc>{base_url}/verification</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>",
+            f"<url><loc>{base_url}/telegram</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>",
+            f"<url><loc>{base_url}/about</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>",
+            f"<url><loc>{base_url}/shamsuddeen</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>",
+        ]
+
+        for post in BlogPost.objects.filter(is_published=True):
+            urls.append(f"<url><loc>{base_url}/blog/{post.slug}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>")
+
+        xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n' \
+                      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + \
+                      '\n'.join(urls) + \
+                      '\n</urlset>'
+
+        return HttpResponse(xml_content, content_type="application/xml")
 
 
 

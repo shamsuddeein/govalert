@@ -24,12 +24,17 @@ if not _admin_url:
         stacklevel=1
     )
 
+from apps.api import views as api_views
+
 urlpatterns = [
     # Telegram Bot Webhook
     path('telegram/', include('apps.bot.urls')),
 
     # REST API
     path('api/', include('apps.api.urls')),
+
+    # Sitemap
+    path('sitemap.xml', api_views.SitemapXmlView.as_view(), name='root_sitemap_xml'),
 
     # Root Progressive Web App (PWA) Endpoints
     path('service-worker.js', pwa_views.service_worker_view, name='pwa_service_worker'),
