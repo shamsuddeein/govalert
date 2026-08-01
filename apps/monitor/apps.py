@@ -10,14 +10,29 @@ class MonitorConfig(AppConfig):
     def ready(self):
         # ── SQLite WAL mode ────────────────────────────────────────────────────
         # Applies WAL journal mode to every SQLite connection created in this
-        # process. WAL allows concurrent reads + 1 write without blocking,
-        # which reduces the "database is locked" warnings from APScheduler
-        # executor threads writing simultaneously.
-        # This is the correct Django approach (init_command is MySQL-only).
+        # process. WAL allows concurrent reads + 1 write without blocking.
+        # This is a no-op on PostgreSQL (connection_created fires but the
+        # vendor check ensures it only runs for SQLite).
         self._configure_sqlite_wal()
 
         # ── Scheduler ─────────────────────────────────────────────────────────
-        # Check if we are running unit/integration tests
+        # APScheduler is now a dedicated Railway worker process (worker.py).
+        # It must NOT start inside the web (gunicorn) process to avoid:
+        #   - Jobs running twice (one per gunicorn worker).
+        #   - Lost jobs on Railway dyno restarts.
+        #   - Resource contention between HTTP traffic and scraping threads.
+        #
+        # The web process simply sets DISABLE_IN_PROCESS_SCHEDULER=true (or
+        # USE_CELERY=true) and never touches APScheduler at all.
+        #
+        # If neither flag is set AND we are in a plain `runserver` (local dev
+        # without the dedicated worker), fall back to the in-process scheduler
+        # so developers still get scheduled jobs locally.
+        self._maybe_start_dev_scheduler()
+
+    def _maybe_start_dev_scheduler(self):
+        """Start the in-process scheduler only for local `runserver` dev sessions."""
+        # Skip in test runners.
         is_testing = (
             'test' in sys.argv or
             any('pytest' in arg for arg in sys.argv) or
@@ -27,34 +42,32 @@ class MonitorConfig(AppConfig):
             return
 
         from django.conf import settings
-        # Only start APScheduler if Celery is NOT being used.
-        # When USE_CELERY=True, Celery Beat handles all scheduled tasks.
-        # Running both simultaneously causes double portal checks and duplicate alerts.
-        if getattr(settings, 'USE_CELERY', False):
-            # Celery is managing scheduling — skip the in-process scheduler.
-            return
-        # Allow explicit override to force APScheduler even with Celery (e.g. local dev).
+
+        # Explicit opt-out: worker.py is handling scheduling.
         if getattr(settings, 'DISABLE_IN_PROCESS_SCHEDULER', False):
             return
 
-        # To avoid running scheduler twice in dev (reloader) or during
-        # migrations/commands, only start scheduler when running the main
-        # web server. Django runserver sets RUN_MAIN='true' for the reloader.
-        is_manage_py = any(arg.endswith('manage.py') for arg in sys.argv)
-        is_runserver = 'runserver' in sys.argv
+        # Celery-based scheduling is active — skip APScheduler.
+        if getattr(settings, 'USE_CELERY', False):
+            return
+
+        # Only start for `manage.py runserver` (not gunicorn / uvicorn).
+        is_runserver = any(arg.endswith('manage.py') for arg in sys.argv) and 'runserver' in sys.argv
+        if not is_runserver:
+            return
+
+        # Django runserver spawns a reloader child; only start in that child.
+        if os.environ.get('RUN_MAIN') != 'true':
+            return
 
         try:
-            if is_manage_py and is_runserver:
-                if os.environ.get('RUN_MAIN') == 'true':
-                    from config import scheduler
-                    scheduler.start()
-            elif not is_manage_py:
-                # Running under ASGI/WSGI (production)
-                from config import scheduler
-                scheduler.start()
+            from config import scheduler
+            scheduler.start()
         except Exception as exc:
             import logging
-            logging.getLogger(__name__).warning("Could not start background scheduler: %s", exc)
+            logging.getLogger(__name__).warning(
+                "Could not start background scheduler in dev: %s", exc
+            )
 
     @staticmethod
     def _configure_sqlite_wal():

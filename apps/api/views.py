@@ -1030,6 +1030,84 @@ class HealthView(APIView):
         return Response(response_payload, status=http_code)
 
 
+class SchedulerHealthView(APIView):
+    """
+    GET /api/v1/health/scheduler/
+
+    Reports whether the dedicated APScheduler worker process is alive and
+    producing portal checks at the expected cadence.
+
+    Returns:
+      status          — 'healthy' if a check completed in the last 20 minutes,
+                        'degraded' otherwise.
+      last_check_at   — ISO-8601 timestamp of the most recent Snapshot.
+      last_check_minutes_ago — how many minutes ago that was.
+      checks_last_hour — total Snapshot rows created in the last 60 minutes.
+      threshold_minutes — the freshness threshold used (always 20).
+
+    HTTP 200 when healthy, HTTP 503 when degraded.
+    """
+    permission_classes = [AllowAny]
+
+    FRESHNESS_THRESHOLD_MINUTES = 20
+
+    def get(self, request):
+        from apps.monitor.models import Snapshot
+
+        now = timezone.now()
+        threshold = self.FRESHNESS_THRESHOLD_MINUTES
+        one_hour_ago = now - timedelta(hours=1)
+
+        try:
+            latest_snap = Snapshot.objects.order_by('-created_at').first()
+        except Exception as exc:
+            return Response({
+                'status': 'degraded',
+                'error': f'Database error: {exc}',
+                'timestamp': now.isoformat(),
+            }, status=http_status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        if latest_snap is None:
+            return Response({
+                'status': 'degraded',
+                'last_check_at': None,
+                'last_check_minutes_ago': None,
+                'checks_last_hour': 0,
+                'threshold_minutes': threshold,
+                'detail': 'No snapshots recorded. Scheduler may not have started yet.',
+                'timestamp': now.isoformat(),
+            }, status=http_status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        minutes_ago = (now - latest_snap.created_at).total_seconds() / 60.0
+
+        try:
+            checks_last_hour = Snapshot.objects.filter(created_at__gte=one_hour_ago).count()
+        except Exception:
+            checks_last_hour = 0
+
+        is_healthy = minutes_ago <= threshold
+        scheduler_status = 'healthy' if is_healthy else 'degraded'
+        http_code = http_status.HTTP_200_OK if is_healthy else http_status.HTTP_503_SERVICE_UNAVAILABLE
+
+        detail = None
+        if not is_healthy:
+            detail = (
+                f'Last portal check was {round(minutes_ago, 1)} minutes ago, '
+                f'which exceeds the {threshold}-minute threshold. '
+                'The scheduler worker may be stopped or unhealthy.'
+            )
+
+        return Response({
+            'status': scheduler_status,
+            'last_check_at': latest_snap.created_at.isoformat(),
+            'last_check_minutes_ago': round(minutes_ago, 1),
+            'checks_last_hour': checks_last_hour,
+            'threshold_minutes': threshold,
+            'detail': detail,
+            'timestamp': now.isoformat(),
+        }, status=http_code)
+
+
 # ─── Admin Endpoints ───────────────────────────────────────────────────────────
 
 class AdminPortalListView(APIView):
@@ -2552,11 +2630,50 @@ class CustomAdminSystemHealthView(APIView):
                 'success_rate': round((succ / tot * 100), 2) if tot > 0 else None,
             })
 
+        # 5. Scheduler Worker Health
+        # Call the scheduler health logic directly (no HTTP round-trip needed).
+        scheduler_health = {}
+        try:
+            latest_snap = Snapshot.objects.order_by('-created_at').first()
+            if latest_snap:
+                sched_minutes_ago = (now - latest_snap.created_at).total_seconds() / 60.0
+                checks_last_hour = Snapshot.objects.filter(
+                    created_at__gte=now - timedelta(hours=1)
+                ).count()
+                sched_is_healthy = sched_minutes_ago <= 20
+                scheduler_health = {
+                    'status': 'healthy' if sched_is_healthy else 'degraded',
+                    'last_check_at': latest_snap.created_at.isoformat(),
+                    'last_check_minutes_ago': round(sched_minutes_ago, 1),
+                    'checks_last_hour': checks_last_hour,
+                    'threshold_minutes': 20,
+                    'warning': None if sched_is_healthy else (
+                        f'Scheduler degraded: last check was {round(sched_minutes_ago, 1)} minutes ago '
+                        '(threshold: 20 min). Verify the worker service is running on Railway.'
+                    ),
+                }
+            else:
+                scheduler_health = {
+                    'status': 'degraded',
+                    'last_check_at': None,
+                    'last_check_minutes_ago': None,
+                    'checks_last_hour': 0,
+                    'threshold_minutes': 20,
+                    'warning': 'No snapshots recorded. Scheduler worker has not run yet.',
+                }
+        except Exception as exc:
+            scheduler_health = {
+                'status': 'degraded',
+                'error': str(exc),
+                'warning': f'Error querying scheduler health: {exc}',
+            }
+
         return Response({
             'system_status': system_status,
             'portals_breakdown': portals_breakdown,
             'recent_failed_snapshots': recent_failed_snapshots,
             'daily_trend_7_days': daily_trend_7_days,
+            'scheduler_health': scheduler_health,
         })
 
 
