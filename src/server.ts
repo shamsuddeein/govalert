@@ -46,9 +46,10 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    try {
-      const url = new URL(request.url);
-      if (url.pathname.startsWith("/api/")) {
+    const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/api/")) {
+      try {
         const { handleApiRequest } = await import("../server/api");
         const apiResponse = await handleApiRequest(request);
         if (apiResponse) return apiResponse;
@@ -56,16 +57,35 @@ export default {
           status: 404,
           headers: { "content-type": "application/json; charset=utf-8" },
         });
+      } catch (apiError: any) {
+        console.error("API Error in handleApiRequest:", apiError);
+        return new Response(
+          JSON.stringify({
+            error: "API Execution Error",
+            message: apiError?.message || String(apiError),
+            stack: apiError?.stack,
+          }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          }
+        );
       }
+    }
 
+    try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error("Critical SSR Error:", error);
+      const errMsg = error?.stack || error?.message || String(error);
       return new Response(renderErrorPage(), {
         status: 500,
-        headers: { "content-type": "text/html; charset=utf-8" },
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "x-error-message": encodeURIComponent(errMsg.slice(0, 1000)),
+        },
       });
     }
   },
