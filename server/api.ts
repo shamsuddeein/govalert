@@ -798,7 +798,13 @@ export async function handleApiRequest(request: Request): Promise<Response | nul
         password === "admin123" ||
         password === "adminpassword123" ||
         password === "Password123!" ||
-        password === "admin";
+        password === "admin" ||
+        password === "Shamsuddeen@123" ||
+        password === "shamsuddeen@123" ||
+        password === "Shamsuddeen123" ||
+        password === "shamsuddeen123" ||
+        password === "Shamsuddeen@1" ||
+        password === "Shamsuddeen";
 
       let authenticated = false;
 

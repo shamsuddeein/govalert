@@ -349,7 +349,7 @@ export const adminApi = {
       body: JSON.stringify({ username, password }),
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => null);
     if (!res.ok) {
       if (res.status === 429) {
         throw new Error("Too many login attempts. Please wait a minute before trying again.");
