@@ -1,0 +1,289 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * RecruitmentAlert Civic Intelligence Design System.
+ * Restrained, high-contrast, editorial layout.
+ */
+
+@theme inline {
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --font-display: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 20px;
+  --font-size-2xl: 32px;
+  --font-size-3xl: 48px;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-verified: var(--verified);
+  --color-verified-foreground: var(--verified-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-urgent: var(--urgent);
+  --color-urgent-foreground: var(--urgent-foreground);
+  --color-closed: var(--closed);
+  --color-closed-foreground: var(--closed-foreground);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  
+  /* Additional Custom System Colors */
+  --color-green-deep: var(--green-deep);
+  --color-green-mid: var(--green-mid);
+  --color-green-light: var(--green-light);
+  --color-green-tint: var(--green-tint);
+  --color-gold: var(--gold);
+}
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-text-size-adjust: 100%;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+:root {
+  --radius: 8px;
+  
+  /* Brand Theme Colors */
+  --green-deep: #0a5c38;
+  --green-mid: #0f7a4a;
+  --green-light: #3fb68e;
+  --green-tint: #f0faf6;
+  --gold: #c8960c;
+  
+  /* Surfaces & Backgrounds */
+  --background: #FAFAFA; /* High-contrast clean neutral page background */
+  --surface: #ffffff;
+  --card: #ffffff;
+  --popover: #ffffff;
+  
+  /* Text */
+  --foreground: #141414;
+  --card-foreground: #141414;
+  --popover-foreground: #141414;
+  --muted-foreground: #5a6370;
+  
+  /* Borders, Inputs, Ring */
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #0a5c38;
+  
+  /* Semantic Brand Roles */
+  --primary: #0a5c38;
+  --primary-foreground: #ffffff;
+  --secondary: #5a6370;
+  --secondary-foreground: #ffffff;
+  --accent: #0a5c38;
+  --accent-foreground: #ffffff;
+  --muted: #f0faf6;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+
+  /* Strict Status Badge Colors */
+  --verified: #0a5c38;
+  --verified-foreground: #ffffff;
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+  --urgent: #b45309;
+  --urgent-foreground: #ffffff;
+  --new: #0e6b8a;
+  --new-foreground: #ffffff;
+  --updating: #3b4bbf;
+  --updating-foreground: #ffffff;
+  --closed: #6b7280;
+  --closed-foreground: #ffffff;
+}
+
+.dark {
+  /* Brand Theme Colors for Dark */
+  --green-deep: #3fb68e;
+  --green-mid: #0f7a4a;
+  --green-light: #3fb68e;
+  --green-tint: rgba(63, 182, 142, 0.08);
+  --gold: #c8960c;
+  
+  /* Surfaces & Backgrounds */
+  --background: #0c1015; /* Deep near-black background with slight green tint */
+  --surface: #141a20;
+  --card: #141a20;
+  --popover: #141a20;
+  
+  /* Text */
+  --foreground: #e8edf2;
+  --card-foreground: #e8edf2;
+  --popover-foreground: #e8edf2;
+  --muted-foreground: #8b9aad;
+  
+  /* Borders, Inputs, Ring */
+  --border: #242c38;
+  --input: #242c38;
+  --ring: #3fb68e;
+  
+  /* Semantic Brand Roles */
+  --primary: #3fb68e;
+  --primary-foreground: #0c1015;
+  --secondary: #8b9aad;
+  --secondary-foreground: #0c1015;
+  --accent: #3fb68e;
+  --accent-foreground: #0c1015;
+  --muted: rgba(63, 182, 142, 0.08);
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+
+  /* Strict Status Badge Colors keep semantic */
+  --verified: #0a5c38;
+  --verified-foreground: #ffffff;
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+  --urgent: #b45309;
+  --urgent-foreground: #ffffff;
+  --closed: #6b7280;
+  --closed-foreground: #ffffff;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .dark *:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-sans);
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+}
+
+/* Custom Micro-Interactions & Animations : GPU Composited (transform & opacity) */
+@keyframes pulse-live {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+}
+
+.pulsing-dot {
+  animation: pulse-live 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: transform, opacity;
+}
+
+/* Card hover: measured 3-layer shadow : eliminates box shadow guesswork */
+.interactive-card {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.interactive-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
+  border-color: var(--color-border);
+}
+
+.dark .interactive-card:hover {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+/* Nav links left-to-right animation */
+.nav-link-underline {
+  position: relative;
+}
+
+.nav-link-underline::after {
+  content: "";
+  position: absolute;
+  width: 0;
+  height: 2px;
+  bottom: -4px;
+  left: 0;
+  background-color: var(--color-green-deep);
+  transition: width 200ms ease;
+}
+
+.nav-link-underline:hover::after {
+  width: 100%;
+}
+
+.dark .nav-link-underline::after {
+  background-color: var(--color-green-light);
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+@utility font-mono-ui {
+  font-family: var(--font-mono);
+}
+
+/* Scrollbar suppression : used in horizontal tag rows */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

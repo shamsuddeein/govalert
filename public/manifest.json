@@ -1,0 +1,34 @@
+{
+  "name": "RecruitmentAlert",
+  "short_name": "RecruitmentAlert",
+  "description": "Real-time monitoring and verification across 42 Nigerian federal MDA recruitment portals. Instant job alerts for NNPC, Customs, EFCC, Immigration, and Civil Service.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0c1015",
+  "theme_color": "#0a5c38",
+  "lang": "en-NG",
+  "dir": "ltr",
+  "categories": ["jobs", "business", "government", "education"],
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

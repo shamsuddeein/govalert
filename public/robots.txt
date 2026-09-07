@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /sign-in
+Disallow: /register
+Disallow: /forgot-password
+
+Host: https://www.recruitmentalert.com.ng
+Sitemap: https://www.recruitmentalert.com.ng/sitemap.xml

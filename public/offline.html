@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline Mode: RecruitmentAlert</title>
+  <meta name="theme-color" content="#0a5c38" />
+  <meta name="description" content="You are currently viewing RecruitmentAlert in offline mode. Cached recruitment listings and portal health updates remain available." />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <script>
+    (function(){try{var t=localStorage.getItem("theme");if(t==="dark"){document.documentElement.classList.add("dark");}else{document.documentElement.classList.remove("dark");}}catch(e){document.documentElement.classList.remove("dark");}})();
+  </script>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --text: #141414;
+      --muted: #5a6370;
+      --border: #e5e7eb;
+      --green: #0a5c38;
+      --green-deep: #0f7a4a;
+    }
+    .dark {
+      --bg: #0c1015;
+      --surface: #141a20;
+      --text: #e8edf2;
+      --muted: #8b9aad;
+      --border: #242c38;
+      --green: #3fb68e;
+      --green-deep: #0a5c38;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 0;
+      line-height: 1.5;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(225, 29, 72, 0.12);
+      color: #f43f5e;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid rgba(225, 29, 72, 0.25);
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #f43f5e;
+    }
+    main {
+      max-width: 680px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 20px;
+      flex: 1;
+    }
+    .offline-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px 24px;
+      text-align: center;
+      margin-bottom: 32px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    .offline-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(10, 92, 56, 0.12);
+      color: var(--green);
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    p.desc {
+      font-size: 14px;
+      color: var(--muted);
+      max-width: 480px;
+      margin: 0 auto 24px auto;
+    }
+    .action-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.15s ease;
+      border: none;
+    }
+    .btn-primary {
+      background: var(--green);
+      color: #0c1015;
+    }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn:hover { opacity: 0.9; }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .cached-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .cached-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+    .cached-item:hover {
+      border-color: var(--green);
+    }
+    .item-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .item-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="/" class="brand">
+      <svg width="20" height="24" viewBox="0 0 24 28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 3h11l5 5v17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+        <path d="M15 3v5h5" />
+        <path d="M8 16.5l3 3 6-7" />
+      </svg>
+      <span>RecruitmentAlert</span>
+    </a>
+    <div class="badge">
+      <span class="dot"></span>
+      <span>Connection Offline</span>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <div class="offline-card">
+      <div class="offline-icon">
+        <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a9 9 0 010-12.728m0 0l2.829 2.829M3 3l18 18" />
+        </svg>
+      </div>
+
+      <h1>You are currently offline</h1>
+      <p class="desc">
+        No active network connection detected. Don't worry, your recently viewed recruitment notices are cached locally for offline reading.
+      </p>
+
+      <div class="action-group">
+        <button onclick="window.location.reload()" class="btn btn-primary">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+          Retry Connection
+        </button>
+
+        <a href="https://t.me/govalerts_bot?start=offline" target="_blank" rel="noreferrer" class="btn btn-secondary">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.11.02-1.93 1.23-5.46 3.62-.51.35-.98.53-1.39.51-.46-.01-1.33-.26-1.99-.47-.8-.27-1.44-.41-1.39-.87.03-.24.35-.49.97-.75 3.79-1.65 6.32-2.73 7.57-3.26 3.61-1.53 4.36-1.8 4.85-1.8.11 0 .35.03.5.15.13.12.17.27.18.39-.01.08-.01.18-.02.26z" />
+          </svg>
+          Get Telegram Alerts
+        </a>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Recently Cached Pages</div>
+      <div id="cached-pages-container" class="cached-list">
+        <a href="/" class="cached-item">
+          <div>
+            <div class="item-title">RecruitmentAlert Homepage</div>
+            <div class="item-sub">Monitored 42 Federal Recruitment Portals</div>
+          </div>
+          <span style="font-size: 12px; color: var(--green); font-weight: 600;">Available &rarr;</span>
+        </a>
+        <a href="/jobs" class="cached-item">
+          <div>
+            <div class="item-title">Verified Jobs Directory</div>
+            <div class="item-sub">All Active Federal Recruitments Feed</div>
+          </div>
+          <span style="font-size: 12px; color: var(--green); font-weight: 600;">Available &rarr;</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    RecruitmentAlert &middot; Instant Offline Storage Active
+  </footer>
+
+  <script>
+    // Inspect CacheStorage for available cached routes
+    async function loadCachedPages() {
+      if (!('caches' in window)) return;
+      try {
+        const cacheNames = await caches.keys();
+        const pageCacheName = cacheNames.find(c => c.includes('govalert-pages'));
+        if (!pageCacheName) return;
+        const cache = await caches.open(pageCacheName);
+        const requests = await cache.keys();
+        const container = document.getElementById('cached-pages-container');
+        
+        if (requests.length > 0) {
+          const links = requests.map(req => {
+            const url = new URL(req.url);
+            if (url.pathname === '/' || url.pathname === '/jobs') return '';
+            const title = url.pathname.replace('/jobs/', '').replace('/', ' ').toUpperCase();
+            return `
+              <a href="${url.pathname}" class="cached-item">
+                <div>
+                  <div class="item-title">${title}</div>
+                  <div class="item-sub">Cached for offline access</div>
+                </div>
+                <span style="font-size: 12px; color: var(--green); font-weight: 600;">View &rarr;</span>
+              </a>
+            `;
+          }).filter(Boolean).join('');
+          
+          if (links) {
+            container.innerHTML += links;
+          }
+        }
+      } catch (e) {
+        console.log('Cache inspect failed:', e);
+      }
+    }
+    loadCachedPages();
+  </script>
+</body>
+</html>
