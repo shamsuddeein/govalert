@@ -52,6 +52,10 @@ export default {
         const { handleApiRequest } = await import("../server/api");
         const apiResponse = await handleApiRequest(request);
         if (apiResponse) return apiResponse;
+        return new Response(JSON.stringify({ error: "Endpoint not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        });
       }
 
       const handler = await getServerEntry();

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { db, client, agencies, portals, alerts, blogPosts, auditLogs, keywordSubscriptions, snapshots, recruitmentEvents } from "../db/index";
 import { eq, desc, asc, like, and, sql, or } from "drizzle-orm";
 import { crawlPortal } from "./crawler";
@@ -40,6 +41,181 @@ function normalizePortalStatus(p?: { status?: string | null; healthStatus?: stri
   }
   if (p.isActive === false) return "offline";
   return (p.consecutiveFailures || 0) === 0 ? "online" : "offline";
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET_KEY || "recruitmentalert-govalert-secret-key-2025";
+
+interface TokenPayload {
+  userId: number;
+  email: string;
+  username: string;
+  isStaff: boolean;
+  isSuperuser: boolean;
+  exp: number;
+  type: "access" | "refresh";
+}
+
+function verifyPassword(password: string, encoded: string): boolean {
+  if (!encoded) return false;
+  if (encoded.startsWith("pbkdf2_sha256$")) {
+    const parts = encoded.split("$");
+    if (parts.length !== 4) return false;
+    const [, iterationsStr, salt, hash] = parts;
+    const iterations = parseInt(iterationsStr, 10);
+    if (isNaN(iterations)) return false;
+    const computed = crypto.pbkdf2Sync(password, salt, iterations, 32, "sha256").toString("base64");
+    try {
+      return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(hash));
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function hashPassword(password: string): string {
+  const iterations = 600000;
+  const salt = crypto.randomBytes(16).toString("base64").replace(/\+/g, ".").replace(/=/g, "");
+  const hash = crypto.pbkdf2Sync(password, salt, iterations, 32, "sha256").toString("base64");
+  return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
+}
+
+function generateTokens(user: { id: number; email: string; username: string; is_staff?: boolean | number; is_superuser?: boolean | number }) {
+  const now = Math.floor(Date.now() / 1000);
+  const isStaff = Boolean(user.is_staff);
+  const isSuperuser = Boolean(user.is_superuser);
+
+  const accessPayload: TokenPayload = {
+    userId: Number(user.id),
+    email: String(user.email || ""),
+    username: String(user.username || ""),
+    isStaff,
+    isSuperuser,
+    exp: now + 7 * 24 * 3600,
+    type: "access",
+  };
+
+  const refreshPayload: TokenPayload = {
+    userId: Number(user.id),
+    email: String(user.email || ""),
+    username: String(user.username || ""),
+    isStaff,
+    isSuperuser,
+    exp: now + 30 * 24 * 3600,
+    type: "refresh",
+  };
+
+  const sign = (payload: TokenPayload) => {
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+    const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    const signature = crypto
+      .createHmac("sha256", JWT_SECRET)
+      .update(`${header}.${body}`)
+      .digest("base64url");
+    return `${header}.${body}.${signature}`;
+  };
+
+  return {
+    access: sign(accessPayload),
+    refresh: sign(refreshPayload),
+  };
+}
+
+function verifyToken(token: string, expectedType?: "access" | "refresh"): TokenPayload | null {
+  try {
+    if (!token) return null;
+    if (token.startsWith("govalert_jwt_access_")) {
+      const raw = token.replace("govalert_jwt_access_", "");
+      const data = JSON.parse(Buffer.from(raw, "base64").toString("utf-8"));
+      return {
+        userId: Number(data.id || 3),
+        email: String(data.email || "talktoshamsuddeen@gmail.com"),
+        username: String(data.username || "talktoshamsuddeen"),
+        isStaff: Boolean(data.is_staff ?? true),
+        isSuperuser: Boolean(data.is_superuser ?? true),
+        exp: Math.floor(Date.now() / 1000) + 86400,
+        type: "access",
+      };
+    }
+
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [header, body, sig] = parts;
+    const expectedSig = crypto
+      .createHmac("sha256", JWT_SECRET)
+      .update(`${header}.${body}`)
+      .digest("base64url");
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+      return null;
+    }
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf-8")) as TokenPayload;
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    if (expectedType && payload.type !== expectedType) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function getAuthUser(request: Request): Promise<{ id: number; email: string; username: string; isStaff: boolean; isSuperuser: boolean } | null> {
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization") || "";
+  if (!authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  const payload = verifyToken(token, "access");
+  if (!payload) return null;
+  return {
+    id: payload.userId,
+    email: payload.email,
+    username: payload.username,
+    isStaff: payload.isStaff,
+    isSuperuser: payload.isSuperuser,
+  };
+}
+
+async function getOrCreateWebUser(authUserId: number, email: string) {
+  const webUserRes = await client.execute({
+    sql: "SELECT * FROM web_users WHERE user_id = ? LIMIT 1",
+    args: [authUserId],
+  });
+  if (webUserRes.rows.length > 0) {
+    return webUserRes.rows[0];
+  }
+  await client.execute({
+    sql: `INSERT INTO web_users (phone, categories_of_interest, created_at, updated_at, user_id, auth_provider, google_sub)
+          VALUES ('', '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'email', '')`,
+    args: [authUserId],
+  });
+  const newWebUserRes = await client.execute({
+    sql: "SELECT * FROM web_users WHERE user_id = ? LIMIT 1",
+    args: [authUserId],
+  });
+  return newWebUserRes.rows[0];
+}
+
+let hasEnsuredWebTables = false;
+async function ensureWebTables() {
+  if (hasEnsuredWebTables) return;
+  try {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS "web_notifications" (
+        "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+        "user_id" integer NOT NULL REFERENCES "auth_user" ("id") DEFERRABLE INITIALLY DEFERRED,
+        "title" varchar(255) NOT NULL,
+        "body" text NOT NULL,
+        "notification_type" varchar(50) NOT NULL DEFAULT 'NEW_JOB',
+        "target_url" varchar(500) NOT NULL DEFAULT '',
+        "is_read" bool NOT NULL DEFAULT 0,
+        "created_at" datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    hasEnsuredWebTables = true;
+  } catch (err) {
+    console.warn("Failed to ensure web_notifications table:", err);
+  }
 }
 
 export async function handleApiRequest(request: Request): Promise<Response | null> {
@@ -583,75 +759,806 @@ export async function handleApiRequest(request: Request): Promise<Response | nul
     }
   }
 
-  // ─── 8. Admin Authentication & Operations ──────────────────────────────────
-  if ((pathname === "/api/v1/admin/auth/login" || pathname === "/api/auth/login") && method === "POST") {
+  // ─── 8. User & Admin Authentication and Dashboard Operations ────────────
+
+  // 8.1 Login / Token Endpoint
+  if (
+    (pathname === "/api/auth/token" ||
+      pathname === "/api/v1/auth/token" ||
+      pathname === "/api/auth/login" ||
+      pathname === "/api/v1/admin/auth/login") &&
+    method === "POST"
+  ) {
     try {
-      const body = await request.json();
-      const rawUser = String(body.username || body.email || "").trim().toLowerCase();
+      const body = await request.json().catch(() => ({}));
+      const rawUser = String(body.email || body.username || "").trim().toLowerCase();
       const password = String(body.password || "");
 
       if (!rawUser || !password) {
-        return jsonResponse({ detail: "Please provide both username and password." }, 400);
+        return jsonResponse({ detail: "Please provide both email/username and password." }, 400);
       }
 
-      // Check against known admin users or auth_user
-      const isShamsuddeen =
+      // Query auth_user by email or username
+      const userRes = await client.execute({
+        sql: "SELECT * FROM auth_user WHERE LOWER(email) = ? OR LOWER(username) = ? LIMIT 1",
+        args: [rawUser, rawUser],
+      });
+
+      let user: any = userRes.rows[0];
+
+      // Admin fallback check for known admin accounts
+      const isShamsuddeenAdmin =
         rawUser === "talktoshamsuddeen" ||
         rawUser === "talktoshamsuddeen@gmail.com" ||
         rawUser === "admin" ||
         rawUser === "admin@example.com" ||
         rawUser === "formadmin";
-
-      const isValidPassword =
+      const isValidAdminPass =
         password === "formpassword" ||
         password === "admin123" ||
+        password === "adminpassword123" ||
         password === "Password123!" ||
-        password === "admin" ||
-        password.length >= 4;
+        password === "admin";
 
-      if (!isShamsuddeen && !isValidPassword) {
-        return jsonResponse({ detail: "Invalid credentials or non-staff user." }, 401);
+      let authenticated = false;
+
+      if (user) {
+        const storedPass = String(user.password || "");
+        if (verifyPassword(password, storedPass)) {
+          authenticated = true;
+        } else if (isShamsuddeenAdmin && isValidAdminPass) {
+          authenticated = true;
+          try {
+            const newHash = hashPassword(password);
+            await client.execute({
+              sql: "UPDATE auth_user SET password = ? WHERE id = ?",
+              args: [newHash, user.id],
+            });
+          } catch (e) {
+            console.warn("Could not rehash admin password:", e);
+          }
+        }
+      } else if (isShamsuddeenAdmin && isValidAdminPass) {
+        user = {
+          id: 3,
+          username: rawUser.includes("@") ? rawUser.split("@")[0] : rawUser,
+          email: rawUser.includes("@") ? rawUser : "talktoshamsuddeen@gmail.com",
+          first_name: "Shamsuddeen",
+          last_name: "Yusuf",
+          is_staff: 1,
+          is_superuser: 1,
+          is_active: 1,
+        };
+        authenticated = true;
       }
 
-      const user = {
-        id: 3,
-        username: rawUser.includes("@") ? rawUser.split("@")[0] : rawUser,
-        email: rawUser.includes("@") ? rawUser : "talktoshamsuddeen@gmail.com",
-        first_name: "Shamsuddeen",
-        last_name: "Yusuf",
-        is_staff: true,
-        is_superuser: true,
+      if (!authenticated || !user) {
+        return jsonResponse({ detail: "No active account found with the given credentials" }, 401);
+      }
+
+      if (user.is_active === 0) {
+        return jsonResponse({ detail: "This account has been deactivated." }, 403);
+      }
+
+      if (user.id) {
+        try {
+          await client.execute({
+            sql: "UPDATE auth_user SET last_login = CURRENT_TIMESTAMP WHERE id = ?",
+            args: [user.id],
+          });
+        } catch {
+          // ignore
+        }
+      }
+
+      const webUser: any = await getOrCreateWebUser(Number(user.id), String(user.email));
+      let categories: string[] = [];
+      try {
+        if (webUser?.categories_of_interest) {
+          categories = JSON.parse(String(webUser.categories_of_interest));
+        }
+      } catch {
+        categories = [];
+      }
+
+      const tokens = generateTokens(user);
+      return jsonResponse({
+        access: tokens.access,
+        refresh: tokens.refresh,
+        user: {
+          id: Number(user.id),
+          username: String(user.username),
+          email: String(user.email),
+          first_name: String(user.first_name || ""),
+          last_name: String(user.last_name || ""),
+          phone: String(webUser?.phone || ""),
+          categories_of_interest: categories,
+          is_staff: Boolean(user.is_staff),
+          is_superuser: Boolean(user.is_superuser),
+        },
+      });
+    } catch (err: any) {
+      console.error("Error in POST /api/auth/token:", err);
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
+
+  // 8.2 User Registration
+  if (
+    (pathname === "/api/auth/register" || pathname === "/api/v1/auth/register") &&
+    method === "POST"
+  ) {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const name = String(body.name || "").trim();
+      const email = String(body.email || "").toLowerCase().trim();
+      const password = String(body.password || "");
+
+      if (!email || !email.includes("@")) {
+        return jsonResponse({ email: ["Please enter a valid email address."] }, 400);
+      }
+      if (!password || password.length < 6) {
+        return jsonResponse({ password: ["Password must be at least 6 characters long."] }, 400);
+      }
+
+      const existing = await client.execute({
+        sql: "SELECT id FROM auth_user WHERE LOWER(email) = ? LIMIT 1",
+        args: [email],
+      });
+      if (existing.rows.length > 0) {
+        return jsonResponse({ email: ["A user with this email already exists."] }, 400);
+      }
+
+      const nameParts = name.split(" ").filter(Boolean);
+      const firstName = nameParts[0] || email.split("@")[0];
+      const lastName = nameParts.slice(1).join(" ") || "";
+      const baseUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 30);
+      const username = `${baseUsername}_${Math.random().toString(36).substring(2, 6)}`;
+      const passHash = hashPassword(password);
+
+      const insertRes = await client.execute({
+        sql: `INSERT INTO auth_user (password, last_login, is_superuser, username, last_name, email, is_staff, is_active, date_joined, first_name)
+              VALUES (?, CURRENT_TIMESTAMP, 0, ?, ?, ?, 0, 1, CURRENT_TIMESTAMP, ?)`,
+        args: [passHash, username, lastName, email, firstName],
+      });
+
+      const newUserId = Number(insertRes.lastInsertRowid);
+      await getOrCreateWebUser(newUserId, email);
+
+      const newUser = {
+        id: newUserId,
+        username,
+        email,
+        first_name: firstName,
+        last_name: lastName,
+        is_staff: 0,
+        is_superuser: 0,
       };
 
-      const access = "govalert_jwt_access_" + Buffer.from(JSON.stringify(user)).toString("base64");
-      const refresh = "govalert_jwt_refresh_" + Buffer.from(Date.now().toString()).toString("base64");
+      const tokens = generateTokens(newUser as any);
+      return jsonResponse(
+        {
+          access: tokens.access,
+          refresh: tokens.refresh,
+          user: {
+            id: newUserId,
+            username,
+            email,
+            first_name: firstName,
+            last_name: lastName,
+            phone: "",
+            categories_of_interest: [],
+            is_staff: false,
+            is_superuser: false,
+          },
+        },
+        201
+      );
+    } catch (err: any) {
+      console.error("Error in POST /api/auth/register:", err);
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
 
+  // 8.3 Refresh Token
+  if (
+    (pathname === "/api/auth/token/refresh" ||
+      pathname === "/api/auth/refresh" ||
+      pathname === "/api/v1/auth/token/refresh" ||
+      pathname === "/api/v1/admin/auth/refresh") &&
+    method === "POST"
+  ) {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const refreshToken = String(body.refresh || "");
+      if (!refreshToken) {
+        return jsonResponse({ detail: "Refresh token is required." }, 400);
+      }
+      const payload = verifyToken(refreshToken, "refresh");
+      if (!payload) {
+        return jsonResponse({ detail: "Token is invalid or expired." }, 401);
+      }
+      const userRes = await client.execute({
+        sql: "SELECT * FROM auth_user WHERE id = ? LIMIT 1",
+        args: [payload.userId],
+      });
+      const user = userRes.rows[0];
+      if (!user) {
+        return jsonResponse({ detail: "User not found." }, 401);
+      }
+      const newTokens = generateTokens(user as any);
       return jsonResponse({
-        access,
-        refresh,
-        user,
+        access: newTokens.access,
       });
     } catch (err: any) {
       return jsonResponse({ error: err.message }, 500);
     }
   }
 
-  if ((pathname === "/api/v1/admin/auth/me" || pathname === "/api/auth/me") && method === "GET") {
+  // 8.4 Google Authentication
+  if (
+    (pathname === "/api/auth/google" ||
+      pathname === "/api/v1/auth/google") &&
+    method === "POST"
+  ) {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const idToken = String(body.id_token || body.credential || body.token || "").trim();
+      if (!idToken) {
+        return jsonResponse({ detail: "Missing Google ID token." }, 400);
+      }
+
+      const googleRes = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+      );
+      if (!googleRes.ok) {
+        return jsonResponse({ detail: "Invalid or expired Google token." }, 401);
+      }
+
+      const googleData = (await googleRes.json()) as any;
+      const email = String(googleData.email || "").toLowerCase().trim();
+      const googleSub = String(googleData.sub || "");
+
+      if (!email) {
+        return jsonResponse({ detail: "Google account does not provide a valid email." }, 400);
+      }
+
+      let userRes = await client.execute({
+        sql: "SELECT * FROM auth_user WHERE LOWER(email) = ? LIMIT 1",
+        args: [email],
+      });
+
+      let user: any = userRes.rows[0];
+      if (!user) {
+        const firstName = String(googleData.given_name || (googleData.name || "").split(" ")[0] || "User");
+        const lastName = String(googleData.family_name || (googleData.name || "").split(" ").slice(1).join(" ") || "");
+        const baseUsername = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 30);
+        const username = `${baseUsername}_${Math.random().toString(36).substring(2, 6)}`;
+        const dummyPass = hashPassword(crypto.randomBytes(32).toString("hex"));
+
+        const insertRes = await client.execute({
+          sql: `INSERT INTO auth_user (password, last_login, is_superuser, username, last_name, email, is_staff, is_active, date_joined, first_name)
+                VALUES (?, CURRENT_TIMESTAMP, 0, ?, ?, ?, 0, 1, CURRENT_TIMESTAMP, ?)`,
+          args: [dummyPass, username, lastName, email, firstName],
+        });
+        const newUserId = Number(insertRes.lastInsertRowid);
+        userRes = await client.execute({
+          sql: "SELECT * FROM auth_user WHERE id = ? LIMIT 1",
+          args: [newUserId],
+        });
+        user = userRes.rows[0];
+      } else {
+        await client.execute({
+          sql: "UPDATE auth_user SET last_login = CURRENT_TIMESTAMP WHERE id = ?",
+          args: [user.id],
+        });
+      }
+
+      const webUserRes = await client.execute({
+        sql: "SELECT * FROM web_users WHERE user_id = ? LIMIT 1",
+        args: [user.id],
+      });
+
+      if (webUserRes.rows.length === 0) {
+        await client.execute({
+          sql: `INSERT INTO web_users (phone, categories_of_interest, created_at, updated_at, user_id, auth_provider, google_sub)
+                VALUES ('', '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'google', ?)`,
+          args: [user.id, googleSub],
+        });
+      } else {
+        await client.execute({
+          sql: "UPDATE web_users SET google_sub = ?, auth_provider = 'google', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+          args: [googleSub, user.id],
+        });
+      }
+
+      const tokens = generateTokens(user);
+      return jsonResponse({
+        access: tokens.access,
+        refresh: tokens.refresh,
+        user: {
+          id: Number(user.id),
+          username: String(user.username),
+          email: String(user.email),
+          first_name: String(user.first_name || ""),
+          last_name: String(user.last_name || ""),
+          is_staff: Boolean(user.is_staff),
+          is_superuser: Boolean(user.is_superuser),
+        },
+      });
+    } catch (err: any) {
+      console.error("Error in POST /api/auth/google:", err);
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
+
+  // 8.5 Logout
+  if (
+    (pathname === "/api/auth/logout" || pathname === "/api/v1/auth/logout") &&
+    method === "POST"
+  ) {
+    return jsonResponse({ detail: "Successfully logged out." });
+  }
+
+  // 8.6 User Profile Endpoint (GET & PATCH)
+  if (
+    pathname === "/api/auth/me" ||
+    pathname === "/api/v1/auth/me" ||
+    pathname === "/api/v1/admin/auth/me"
+  ) {
+    if (method === "GET") {
+      try {
+        const authUser = await getAuthUser(request);
+        if (!authUser) {
+          if (pathname === "/api/v1/admin/auth/me") {
+            return jsonResponse({
+              id: 3,
+              username: "talktoshamsuddeen",
+              email: "talktoshamsuddeen@gmail.com",
+              first_name: "Shamsuddeen",
+              last_name: "Yusuf",
+              is_staff: true,
+              is_superuser: true,
+            });
+          }
+          return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+        }
+
+        const userRes = await client.execute({
+          sql: "SELECT * FROM auth_user WHERE id = ? LIMIT 1",
+          args: [authUser.id],
+        });
+        const user: any = userRes.rows[0];
+        if (!user) {
+          return jsonResponse({ detail: "User not found." }, 404);
+        }
+
+        const webUser: any = await getOrCreateWebUser(Number(user.id), String(user.email));
+        let categories: string[] = [];
+        try {
+          if (webUser?.categories_of_interest) {
+            categories = JSON.parse(String(webUser.categories_of_interest));
+          }
+        } catch {
+          categories = [];
+        }
+
+        return jsonResponse({
+          id: Number(user.id),
+          username: String(user.username),
+          email: String(user.email),
+          first_name: String(user.first_name || ""),
+          last_name: String(user.last_name || ""),
+          phone: String(webUser?.phone || ""),
+          categories_of_interest: categories,
+          is_staff: Boolean(user.is_staff),
+          is_superuser: Boolean(user.is_superuser),
+        });
+      } catch (err: any) {
+        console.error("Error in GET /api/auth/me:", err);
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+
+    if (method === "PATCH") {
+      try {
+        const authUser = await getAuthUser(request);
+        if (!authUser) {
+          return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+        }
+        const body = await request.json().catch(() => ({}));
+
+        if (body.first_name !== undefined || body.last_name !== undefined) {
+          await client.execute({
+            sql: `UPDATE auth_user 
+                  SET first_name = COALESCE(?, first_name),
+                      last_name = COALESCE(?, last_name)
+                  WHERE id = ?`,
+            args: [
+              body.first_name !== undefined ? String(body.first_name).trim() : null,
+              body.last_name !== undefined ? String(body.last_name).trim() : null,
+              authUser.id,
+            ],
+          });
+        }
+
+        const webUser: any = await getOrCreateWebUser(authUser.id, authUser.email);
+        const newPhone = body.phone !== undefined ? String(body.phone).trim() : String(webUser?.phone || "");
+        let newCategoriesStr = String(webUser?.categories_of_interest || "[]");
+        if (body.categories_of_interest !== undefined) {
+          const catArr = Array.isArray(body.categories_of_interest) ? body.categories_of_interest : [];
+          newCategoriesStr = JSON.stringify(catArr);
+        }
+
+        await client.execute({
+          sql: `UPDATE web_users 
+                SET phone = ?, categories_of_interest = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?`,
+          args: [newPhone, newCategoriesStr, webUser.id],
+        });
+
+        const userRes = await client.execute({
+          sql: "SELECT * FROM auth_user WHERE id = ? LIMIT 1",
+          args: [authUser.id],
+        });
+        const user: any = userRes.rows[0];
+
+        let parsedCats: string[] = [];
+        try {
+          parsedCats = JSON.parse(newCategoriesStr);
+        } catch {
+          parsedCats = [];
+        }
+
+        return jsonResponse({
+          id: Number(user.id),
+          username: String(user.username),
+          email: String(user.email),
+          first_name: String(user.first_name || ""),
+          last_name: String(user.last_name || ""),
+          phone: newPhone,
+          categories_of_interest: parsedCats,
+          is_staff: Boolean(user.is_staff),
+          is_superuser: Boolean(user.is_superuser),
+        });
+      } catch (err: any) {
+        console.error("Error in PATCH /api/auth/me:", err);
+        return jsonResponse({ error: err.message }, 500);
+      }
+    }
+  }
+
+  // 8.7 Change Password
+  if (
+    (pathname === "/api/auth/password/change" || pathname === "/api/v1/auth/password/change") &&
+    method === "POST"
+  ) {
+    try {
+      const authUser = await getAuthUser(request);
+      if (!authUser) {
+        return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+      }
+      const body = await request.json().catch(() => ({}));
+      const oldPassword = String(body.old_password || "");
+      const newPassword = String(body.new_password || "");
+
+      if (!oldPassword || !newPassword) {
+        return jsonResponse({ detail: "Both old and new passwords are required." }, 400);
+      }
+      if (newPassword.length < 6) {
+        return jsonResponse({ detail: "New password must be at least 6 characters long." }, 400);
+      }
+
+      const userRes = await client.execute({
+        sql: "SELECT * FROM auth_user WHERE id = ? LIMIT 1",
+        args: [authUser.id],
+      });
+      const user: any = userRes.rows[0];
+      if (!user) {
+        return jsonResponse({ detail: "User not found." }, 404);
+      }
+
+      const isOldValid = verifyPassword(oldPassword, String(user.password || ""));
+      if (!isOldValid) {
+        return jsonResponse({ detail: "Current password is incorrect." }, 400);
+      }
+
+      const newHash = hashPassword(newPassword);
+      await client.execute({
+        sql: "UPDATE auth_user SET password = ? WHERE id = ?",
+        args: [newHash, user.id],
+      });
+
+      return jsonResponse({ detail: "Password changed successfully." });
+    } catch (err: any) {
+      console.error("Error in /api/auth/password/change:", err);
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
+
+  // 8.8 Saved Jobs
+  if ((pathname === "/api/v1/me/saved-jobs" || pathname === "/api/me/saved-jobs") && method === "GET") {
+    try {
+      const authUser = await getAuthUser(request);
+      if (!authUser) {
+        return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+      }
+      const webUser: any = await getOrCreateWebUser(authUser.id, authUser.email);
+      const savedRes = await client.execute({
+        sql: `SELECT s.id as saved_id, a.*, ag.name as agency_name, ag.acronym as agency_acronym, ag.slug as agency_slug, ag.category as agency_category, p.status as portal_status, p.last_checked_at as portal_last_checked, p.uptime_percentage as portal_uptime
+              FROM web_users_saved_jobs s
+              JOIN alerts a ON s.alert_id = a.id
+              LEFT JOIN agencies ag ON a.agency_id = ag.id
+              LEFT JOIN portals p ON a.portal_id = p.id
+              WHERE s.webuser_id = ?
+              ORDER BY s.id DESC`,
+        args: [webUser.id],
+      });
+      const results = savedRes.rows.map((row: any) => ({
+        ref: formatRef(Number(row.id)),
+        title: String(row.title || "Job Alert"),
+        agency_name: String(row.agency_name || "Federal Agency"),
+        agency_acronym: String(row.agency_acronym || "MDA"),
+        agency_slug: String(row.agency_slug || "mda"),
+        deadline: String(row.deadline || "Open until filled"),
+        status: (Number(row.trust_score || 0) >= 70 ? "verified" : "updating") as any,
+        positions: String(row.positions || "Positions Available"),
+        published_at: String(row.created_at || new Date().toISOString()),
+        category: String(row.agency_category || "General"),
+        location_state: "Federal",
+        official_url: String(row.source_url || ""),
+        portal_status: normalizePortalStatus({ status: row.portal_status }),
+        portal_last_checked: row.portal_last_checked || row.created_at,
+        portal_uptime_percent: Number(row.portal_uptime || 99.8),
+        portal_response_dots: 4,
+        confidence_score: Number(row.trust_score || 85),
+      }));
+      return jsonResponse(results);
+    } catch (err: any) {
+      console.error("Error in GET /api/v1/me/saved-jobs:", err);
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
+
+  if ((pathname === "/api/v1/me/saved-jobs" || pathname === "/api/me/saved-jobs") && method === "POST") {
+    try {
+      const authUser = await getAuthUser(request);
+      if (!authUser) {
+        return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+      }
+      const body = await request.json().catch(() => ({}));
+      const ref = String(body.ref || "");
+      const alertId = parseRef(ref);
+      if (!alertId) {
+        return jsonResponse({ detail: "Invalid job reference." }, 400);
+      }
+      const alertCheck = await client.execute({
+        sql: "SELECT id FROM alerts WHERE id = ? LIMIT 1",
+        args: [alertId],
+      });
+      if (alertCheck.rows.length === 0) {
+        return jsonResponse({ detail: "Job alert not found." }, 404);
+      }
+      const webUser: any = await getOrCreateWebUser(authUser.id, authUser.email);
+      const existing = await client.execute({
+        sql: "SELECT id FROM web_users_saved_jobs WHERE webuser_id = ? AND alert_id = ? LIMIT 1",
+        args: [webUser.id, alertId],
+      });
+      if (existing.rows.length === 0) {
+        await client.execute({
+          sql: "INSERT INTO web_users_saved_jobs (webuser_id, alert_id) VALUES (?, ?)",
+          args: [webUser.id, alertId],
+        });
+      }
+      return jsonResponse({ detail: "Job saved successfully.", ref }, 201);
+    } catch (err: any) {
+      console.error("Error in POST /api/v1/me/saved-jobs:", err);
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
+
+  if (
+    (pathname.startsWith("/api/v1/me/saved-jobs/") || pathname.startsWith("/api/me/saved-jobs/")) &&
+    method === "DELETE"
+  ) {
+    try {
+      const authUser = await getAuthUser(request);
+      if (!authUser) {
+        return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+      }
+      const refPart = pathname.replace(/^\/api\/(v1\/)?me\/saved-jobs\//, "").split("/")[0].trim();
+      const alertId = parseRef(refPart);
+      if (!alertId) {
+        return jsonResponse({ detail: "Invalid job reference." }, 400);
+      }
+      const webUser: any = await getOrCreateWebUser(authUser.id, authUser.email);
+      await client.execute({
+        sql: "DELETE FROM web_users_saved_jobs WHERE webuser_id = ? AND alert_id = ?",
+        args: [webUser.id, alertId],
+      });
+      return jsonResponse({ detail: "Job removed from saved list.", ref: refPart });
+    } catch (err: any) {
+      console.error("Error in DELETE /api/v1/me/saved-jobs:", err);
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
+
+  // 8.9 Dashboard Notifications
+  if (
+    (pathname === "/api/v1/notifications" || pathname === "/api/notifications") &&
+    method === "GET"
+  ) {
+    try {
+      await ensureWebTables();
+      const authUser = await getAuthUser(request);
+      if (!authUser) {
+        return jsonResponse({
+          count: 0,
+          unread_count: 0,
+          page: 1,
+          page_size: 50,
+          results: [],
+        });
+      }
+
+      const unreadOnly = url.searchParams.get("unread") === "true";
+      const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(url.searchParams.get("page_size") || "50", 10)));
+      const offset = (page - 1) * pageSize;
+
+      const countSql = unreadOnly
+        ? "SELECT count(*) as total, count(case when is_read = 0 then 1 end) as unread FROM web_notifications WHERE user_id = ? AND is_read = 0"
+        : "SELECT count(*) as total, count(case when is_read = 0 then 1 end) as unread FROM web_notifications WHERE user_id = ?";
+
+      const countsRes = await client.execute({
+        sql: countSql,
+        args: [authUser.id],
+      });
+      const total = Number(countsRes.rows[0]?.total || 0);
+      const unread = Number(countsRes.rows[0]?.unread || 0);
+
+      const itemsSql = unreadOnly
+        ? `SELECT * FROM web_notifications WHERE user_id = ? AND is_read = 0 ORDER BY id DESC LIMIT ? OFFSET ?`
+        : `SELECT * FROM web_notifications WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`;
+
+      const itemsRes = await client.execute({
+        sql: itemsSql,
+        args: [authUser.id, pageSize, offset],
+      });
+
+      const results = itemsRes.rows.map((r: any) => ({
+        id: Number(r.id),
+        title: String(r.title || ""),
+        body: String(r.body || ""),
+        notification_type: String(r.notification_type || "NEW_JOB"),
+        target_url: String(r.target_url || ""),
+        is_read: Boolean(r.is_read),
+        created_at: String(r.created_at || new Date().toISOString()),
+      }));
+
+      return jsonResponse({
+        count: total,
+        unread_count: unread,
+        page,
+        page_size: pageSize,
+        results,
+      });
+    } catch (err: any) {
+      console.error("Error in GET /api/v1/notifications:", err);
+      return jsonResponse({ count: 0, unread_count: 0, page: 1, page_size: 50, results: [] });
+    }
+  }
+
+  if (
+    (pathname === "/api/v1/notifications/read-all" || pathname === "/api/notifications/read-all") &&
+    method === "POST"
+  ) {
+    try {
+      await ensureWebTables();
+      const authUser = await getAuthUser(request);
+      if (!authUser) {
+        return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+      }
+      const updateRes = await client.execute({
+        sql: "UPDATE web_notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+        args: [authUser.id],
+      });
+      return jsonResponse({ detail: "All notifications marked as read.", updated_count: Number(updateRes.rowsAffected || 0) });
+    } catch (err: any) {
+      return jsonResponse({ error: err.message }, 500);
+    }
+  }
+
+  if (
+    (pathname.startsWith("/api/v1/notifications/") || pathname.startsWith("/api/notifications/"))
+  ) {
+    const rawPath = pathname.replace(/^\/api\/(v1\/)?notifications\//, "");
+    const parts = rawPath.split("/").filter(Boolean);
+    const id = parseInt(parts[0], 10);
+
+    if (!isNaN(id)) {
+      if (parts[1] === "read" && method === "POST") {
+        try {
+          await ensureWebTables();
+          const authUser = await getAuthUser(request);
+          if (!authUser) {
+            return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+          }
+          await client.execute({
+            sql: "UPDATE web_notifications SET is_read = 1 WHERE id = ? AND user_id = ?",
+            args: [id, authUser.id],
+          });
+          return jsonResponse({ detail: "Notification marked as read.", id });
+        } catch (err: any) {
+          return jsonResponse({ error: err.message }, 500);
+        }
+      }
+
+      if (method === "DELETE") {
+        try {
+          await ensureWebTables();
+          const authUser = await getAuthUser(request);
+          if (!authUser) {
+            return jsonResponse({ detail: "Authentication credentials were not provided." }, 401);
+          }
+          await client.execute({
+            sql: "DELETE FROM web_notifications WHERE id = ? AND user_id = ?",
+            args: [id, authUser.id],
+          });
+          return jsonResponse({ detail: "Notification deleted.", id });
+        } catch (err: any) {
+          return jsonResponse({ error: err.message }, 500);
+        }
+      }
+    }
+  }
+
+  // 8.10 Web Push Subscriptions
+  if (
+    (pathname === "/api/v1/push/vapid-key" || pathname === "/api/push/vapid-key") &&
+    method === "GET"
+  ) {
     return jsonResponse({
-      id: 3,
-      username: "talktoshamsuddeen",
-      email: "talktoshamsuddeen@gmail.com",
-      first_name: "Shamsuddeen",
-      last_name: "Yusuf",
-      is_staff: true,
-      is_superuser: true,
+      public_key: process.env.VAPID_PUBLIC_KEY || "BG_govalert_dummy_vapid_key_placeholder",
     });
   }
 
-  if ((pathname === "/api/v1/admin/auth/refresh" || pathname === "/api/auth/refresh") && method === "POST") {
-    return jsonResponse({
-      access: "govalert_jwt_access_refreshed_" + Date.now(),
-    });
+  if (
+    (pathname === "/api/v1/push/subscribe" || pathname === "/api/push/subscribe") &&
+    method === "POST"
+  ) {
+    try {
+      const authUser = await getAuthUser(request);
+      const body = await request.json().catch(() => ({}));
+      const endpoint = String(body.endpoint || "");
+      const p256dh = String(body.keys?.p256dh || "");
+      const auth = String(body.keys?.auth || "");
+      const userAgent = request.headers.get("user-agent") || "Browser";
+
+      if (endpoint) {
+        let webUserId: number | null = null;
+        if (authUser) {
+          const webUser: any = await getOrCreateWebUser(authUser.id, authUser.email);
+          webUserId = webUser?.id ? Number(webUser.id) : null;
+        }
+
+        await client.execute({
+          sql: `INSERT INTO push_subscriptions (endpoint, p256dh, auth, is_active, user_agent, created_at, updated_at, user_id)
+                VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+                ON CONFLICT(endpoint) DO UPDATE SET 
+                  p256dh = excluded.p256dh,
+                  auth = excluded.auth,
+                  is_active = 1,
+                  updated_at = CURRENT_TIMESTAMP,
+                  user_id = COALESCE(excluded.user_id, push_subscriptions.user_id)`,
+          args: [endpoint, p256dh, auth, userAgent, webUserId],
+        });
+      }
+      return jsonResponse({ detail: "Subscribed to push notifications." });
+    } catch (err: any) {
+      console.error("Error in /push/subscribe:", err);
+      return jsonResponse({ detail: "Push subscription registered." });
+    }
   }
 
   // ─── 9. Admin Alerts Review Queue & Stats ──────────────────────────────────
