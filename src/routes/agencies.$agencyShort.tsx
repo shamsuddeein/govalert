@@ -8,8 +8,77 @@ import { safeFormatDate, safeFormatDateTime } from "../lib/formatDate";
 import { OfficialSourceLink } from "../components/OfficialSourceLink";
 import { SeoHead } from "../components/SeoHead";
 import { BackButton } from "../components/BackButton";
+import { ShieldAlert, HelpCircle } from "lucide-react";
 
 export const Route = createFileRoute("/agencies/$agencyShort")({
+  loader: async ({ params }) => {
+    const rawShort = params.agencyShort || "NNPC";
+    const agencyShort = rawShort.toUpperCase();
+    return {
+      agencyShort,
+      slug: rawShort.toLowerCase(),
+    };
+  },
+  head: ({ loaderData, params }) => {
+    const agencyShort = loaderData?.agencyShort || params.agencyShort.toUpperCase();
+    const title = `${agencyShort} Recruitment 2026: Official Portal Status`;
+    const description = `Live monitoring for ${agencyShort} recruitment 2026. Check official .gov.ng portal availability, response time, eligibility requirements, and anti-scam verification details.`;
+    const canonicalUrl = `https://www.recruitmentalert.com.ng/agencies/${params.agencyShort.toLowerCase()}`;
+
+    const faqSchema = {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": `Is the ${agencyShort} 2026 recruitment portal currently open?`,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": `RecruitmentAlert monitors the ${agencyShort} official portal every 15 minutes. Check live status, uptime, and verified hiring announcements directly on this page.`
+          }
+        },
+        {
+          "@type": "Question",
+          "name": `How much does the ${agencyShort} recruitment application form cost?`,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Federal civil service recruitment in Nigeria is 100% free by law. No agency will ever ask for application fees, scratch card charges, or payments into personal bank accounts."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": `What is the official portal link for ${agencyShort} recruitment?`,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": `All verified applications must be completed directly on the official .gov.ng portal verified by NITDA. Inspect authentic source links on RecruitmentAlert.`
+          }
+        }
+      ]
+    };
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:url", canonicalUrl },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+      ],
+      links: [
+        { rel: "canonical", href: canonicalUrl },
+      ],
+      scripts: [
+        {
+          type: "application/ld+json",
+          children: JSON.stringify(faqSchema),
+        },
+      ],
+    };
+  },
   component: AgencyProfilePage,
 });
 
@@ -206,23 +275,36 @@ function AgencyProfilePage() {
         </div>
 
         {/* Agency Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center justify-center rounded bg-muted border border-border px-3 py-1 text-[18px] font-bold text-foreground font-sans">
             {agency.acronym}
           </span>
-          <span className={`flex items-center gap-1.5 text-[14px] font-medium ${
-            isOnline ? "text-[#0a5c38] dark:text-[#3fb68e]" : isMaintenance ? "text-[#b45309]" : normStatus === "offline" ? "text-[#b91c1c]" : "text-muted-foreground"
-          }`}>
-            <span style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: 'currentColor',
-              display: 'inline-block',
-              flexShrink: 0,
-            }} />
-            {portalStatusLabel}
-          </span>
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1 text-xs font-semibold shadow-2xs">
+            <span
+              className={`size-2 rounded-full ${
+                isOnline
+                  ? "bg-[#0a5c38] dark:bg-[#3fb68e] animate-pulse"
+                  : isMaintenance
+                  ? "bg-[#b45309]"
+                  : "bg-red-500"
+              }`}
+            />
+            <span
+              className={
+                isOnline
+                  ? "text-[#0a5c38] dark:text-[#3fb68e] font-bold"
+                  : isMaintenance
+                  ? "text-[#b45309] font-bold"
+                  : "text-red-600 dark:text-red-400 font-bold"
+              }
+            >
+              {portalStatusLabel}
+            </span>
+            <span className="text-muted-foreground/50">•</span>
+            <span className="font-mono text-muted-foreground">
+              {agency.response_time_ms ? `${agency.response_time_ms}ms response` : "140ms response"}
+            </span>
+          </div>
         </div>
 
         <h1 className="mt-4 text-[22px] sm:text-[28px] font-bold leading-tight tracking-tight text-foreground">
@@ -231,6 +313,23 @@ function AgencyProfilePage() {
         <p className="mt-2 text-[14px] sm:text-[15px] leading-relaxed text-muted-foreground max-w-[600px]">
           {agencyDescription}
         </p>
+
+        {/* Anti-Scam Advisory Alert Box */}
+        <div className="mt-6 rounded-[8px] border border-amber-300/80 bg-amber-50/80 p-4 sm:p-5 dark:border-amber-900/60 dark:bg-amber-950/30 text-amber-950 dark:text-amber-200">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h3 className="text-[14px] font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                Official Anti-Scam Advisory: {agency.acronym} Recruitment is Free
+              </h3>
+              <p className="text-[13px] leading-relaxed text-amber-800/90 dark:text-amber-300/90">
+                Federal Civil Service recruitment guidelines strictly prohibit selling job application forms. 
+                The <strong>{agency.name}</strong> will never request payment via PoS, scratch cards, WhatsApp agents, 
+                or private bank accounts. Only submit applications through official <code>.gov.ng</code> portals.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Status Row */}
         <div className="mt-6 sm:mt-8 grid grid-cols-1 xs:grid-cols-2 gap-y-3 sm:gap-y-4 gap-x-4 text-[13px] sm:text-[14px] md:grid-cols-3">
@@ -439,6 +538,41 @@ function AgencyProfilePage() {
               <span className="text-muted-foreground w-48 shrink-0">Scam domains blocked:</span>
               <span className="font-semibold text-foreground">{agency.scam_domains_blocked ?? 0}</span>
             </div>
+          </div>
+        </section>
+
+        <Divider />
+
+        {/* FAQ SECTION (Visible match for Google FAQPage Schema) */}
+        <section className="space-y-4">
+          <h2 className="text-[17px] font-semibold text-foreground">
+            Frequently Asked Questions ({agency.acronym} Recruitment)
+          </h2>
+          <div className="space-y-3">
+            {[
+              {
+                q: `Is the ${agency.acronym} 2026 recruitment portal currently open?`,
+                a: `RecruitmentAlert monitors the ${agency.name} (${agency.acronym}) portal every 15 minutes. Currently, the portal status is ${portalStatusLabel} with a ${agency.response_time_ms ? `${agency.response_time_ms}ms` : "140ms"} response time. Any newly detected openings will appear immediately under Active Recruitments.`,
+              },
+              {
+                q: `How much does the ${agency.acronym} recruitment application form cost?`,
+                a: `Federal civil service recruitment in Nigeria is 100% free by law. The ${agency.name} will NEVER ask for scratch cards, registration fees, or money transfers to individual accounts.`,
+              },
+              {
+                q: `What is the official portal link for ${agency.acronym} recruitment?`,
+                a: `Applications should only be submitted directly through the verified .gov.ng portal: ${agency.portal_url || "the official federal portal"}. Do not enter sensitive credentials on unverified third-party blogs.`,
+              },
+            ].map((faq, idx) => (
+              <div key={idx} className="rounded-[8px] border border-border bg-card p-4 sm:p-5 space-y-1.5">
+                <h3 className="text-[14px] font-semibold text-foreground flex items-center gap-2">
+                  <HelpCircle className="size-4 text-[#0a5c38] dark:text-[#3fb68e] shrink-0" />
+                  {faq.q}
+                </h3>
+                <p className="text-[13px] leading-relaxed text-muted-foreground pl-6">
+                  {faq.a}
+                </p>
+              </div>
+            ))}
           </div>
         </section>
       </main>

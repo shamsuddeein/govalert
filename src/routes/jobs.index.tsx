@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { Nav, Footer } from "../components/layout";
 import { AgencyLogo } from "../components/AgencyLogo";
 import { StatusBadge, JobCardSkeleton, JobsEmptyState, JobsErrorState, type Job, type Status } from "./index";
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { OfficialSourceLink } from "../components/OfficialSourceLink";
 import { SeoHead } from "../components/SeoHead";
 import { BackButton } from "../components/BackButton";
+import { AdBanner } from "../components/AdBanner";
 
 export const Route = createFileRoute("/jobs/")({
   component: JobsPage,
@@ -355,92 +356,100 @@ function JobsPage() {
               {/* Job Listings Grid */}
               {jobs.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {jobs.map((job) => {
+                  {jobs.map((job, idx) => {
                     const portalUrl = job.officialUrl || "";
                     const isClosed = job.status === "closed";
 
                     return (
-                      <div
-                        key={job.id}
-                        className={`group flex flex-col justify-between rounded-[8px] border border-border bg-card p-4 sm:p-6 interactive-card ${
-                          isClosed ? "opacity-65 bg-muted/5" : ""
-                        }`}
-                      >
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between gap-2 min-w-0">
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <AgencyLogo short={job.agencyShort} size={32} className="shrink-0" />
-                              <span className="font-semibold text-xs text-muted-foreground truncate min-w-0">
-                                {job.agencyShort || job.agency}
-                              </span>
+                      <Fragment key={job.id}>
+                        <div
+                          className={`group flex flex-col justify-between rounded-[8px] border border-border bg-card p-4 sm:p-6 interactive-card ${
+                            isClosed ? "opacity-65 bg-muted/5" : ""
+                          }`}
+                        >
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <AgencyLogo short={job.agencyShort} size={32} className="shrink-0" />
+                                <span className="font-semibold text-xs text-muted-foreground truncate min-w-0">
+                                  {job.agencyShort || job.agency}
+                                </span>
+                              </div>
+                              <StatusBadge status={job.status} />
                             </div>
-                            <StatusBadge status={job.status} />
+
+                            <div>
+                              <h3 className="text-[16px] sm:text-[18px] font-semibold leading-snug text-foreground">
+                                {job.title}
+                              </h3>
+                              <p className="mt-1 text-[13px] font-medium text-[#0a5c38] dark:text-[#3fb68e] hover:underline">
+                                <Link to="/agencies/$agencyShort" params={{ agencyShort: job.agencyShort || job.agency || "NNPC" }}>
+                                  {job.agency}
+                                </Link>
+                              </p>
+                            </div>
+
+                            <div className="border-t border-border pt-4 grid grid-cols-1 xs:grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+                              <div>
+                                <span className="block text-muted-foreground text-[12px]">Deadline</span>
+                                <span className="font-medium text-foreground">{job.deadline}</span>
+                              </div>
+                              <div>
+                                <span className="block text-muted-foreground text-[12px]">Positions</span>
+                                <span className="font-medium text-foreground">{job.positions || "Multiple"}</span>
+                              </div>
+                              <div>
+                                <span className="block text-muted-foreground text-[12px]">Published</span>
+                                <span className="font-medium text-foreground">{job.detected}</span>
+                              </div>
+                              <div>
+                                <span className="block text-muted-foreground text-[12px]">Verification</span>
+                                <OfficialSourceLink url={portalUrl} />
+                              </div>
+                            </div>
                           </div>
 
-                          <div>
-                            <h3 className="text-[16px] sm:text-[18px] font-semibold leading-snug text-foreground">
-                              {job.title}
-                            </h3>
-                            <p className="mt-1 text-[13px] font-medium text-[#0a5c38] dark:text-[#3fb68e] hover:underline">
-                              <Link to="/agencies/$agencyShort" params={{ agencyShort: job.agencyShort || job.agency || "NNPC" }}>
-                                {job.agency}
-                              </Link>
-                            </p>
-                          </div>
+                          <div className="mt-6 pt-3 flex items-center justify-between gap-3 border-t border-border/40">
+                            <button
+                              onClick={(e) => handleToggleBookmark(job.id, e)}
+                              aria-label={`${savedRefMap[job.id] ? "Unsave" : "Save"} ${job.title}`}
+                              className={`inline-flex items-center gap-1.5 h-[44px] px-3 rounded-[6px] text-[13px] font-semibold transition-colors cursor-pointer font-sans shrink-0 ${
+                                savedRefMap[job.id]
+                                  ? "bg-[#0a5c38]/10 text-[#0a5c38] dark:bg-[#3fb68e]/15 dark:text-[#3fb68e]"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                              }`}
+                            >
+                              {savedRefMap[job.id] ? (
+                                <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                  <path d="M3 2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v12.5l-5-3.5-5 3.5V2z" />
+                                  <path d="M5.5 7.5l1.5 1.5 3-3" stroke="white" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                                </svg>
+                              ) : (
+                                <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M3 2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v12.5l-5-3.5-5 3.5V2z" />
+                                </svg>
+                              )}
+                              <span>{savedRefMap[job.id] ? "Saved" : "Save"}</span>
+                            </button>
 
-                          <div className="border-t border-border pt-4 grid grid-cols-1 xs:grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
-                            <div>
-                              <span className="block text-muted-foreground text-[12px]">Deadline</span>
-                              <span className="font-medium text-foreground">{job.deadline}</span>
-                            </div>
-                            <div>
-                              <span className="block text-muted-foreground text-[12px]">Positions</span>
-                              <span className="font-medium text-foreground">{job.positions || "Multiple"}</span>
-                            </div>
-                            <div>
-                              <span className="block text-muted-foreground text-[12px]">Published</span>
-                              <span className="font-medium text-foreground">{job.detected}</span>
-                            </div>
-                            <div>
-                              <span className="block text-muted-foreground text-[12px]">Verification</span>
-                              <OfficialSourceLink url={portalUrl} />
-                            </div>
+                            <Link
+                              to="/jobs/$jobId"
+                              params={{ jobId: job.id }}
+                              aria-label={`View details for ${job.title} (${job.agencyShort})`}
+                              className="inline-flex items-center justify-center h-[44px] px-4 rounded-[6px] bg-[#0a5c38]/10 text-[#0a5c38] dark:bg-[#3fb68e]/15 dark:text-[#3fb68e] hover:bg-[#0a5c38] hover:text-white dark:hover:bg-[#3fb68e] dark:hover:text-[#0c1015] text-[13px] font-semibold transition-colors font-sans"
+                            >
+                              View details &rarr;
+                            </Link>
                           </div>
                         </div>
 
-                        <div className="mt-6 pt-3 flex items-center justify-between gap-3 border-t border-border/40">
-                          <button
-                            onClick={(e) => handleToggleBookmark(job.id, e)}
-                            aria-label={`${savedRefMap[job.id] ? "Unsave" : "Save"} ${job.title}`}
-                            className={`inline-flex items-center gap-1.5 h-[44px] px-3 rounded-[6px] text-[13px] font-semibold transition-colors cursor-pointer font-sans shrink-0 ${
-                              savedRefMap[job.id]
-                                ? "bg-[#0a5c38]/10 text-[#0a5c38] dark:bg-[#3fb68e]/15 dark:text-[#3fb68e]"
-                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                            }`}
-                          >
-                            {savedRefMap[job.id] ? (
-                              <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                                <path d="M3 2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v12.5l-5-3.5-5 3.5V2z" />
-                                <path d="M5.5 7.5l1.5 1.5 3-3" stroke="white" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                              </svg>
-                            ) : (
-                              <svg className="size-4 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                <path d="M3 2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v12.5l-5-3.5-5 3.5V2z" />
-                              </svg>
-                            )}
-                            <span>{savedRefMap[job.id] ? "Saved" : "Save"}</span>
-                          </button>
-
-                          <Link
-                            to="/jobs/$jobId"
-                            params={{ jobId: job.id }}
-                            aria-label={`View details for ${job.title} (${job.agencyShort})`}
-                            className="inline-flex items-center justify-center h-[44px] px-4 rounded-[6px] bg-[#0a5c38]/10 text-[#0a5c38] dark:bg-[#3fb68e]/15 dark:text-[#3fb68e] hover:bg-[#0a5c38] hover:text-white dark:hover:bg-[#3fb68e] dark:hover:text-[#0c1015] text-[13px] font-semibold transition-colors font-sans"
-                          >
-                            View details &rarr;
-                          </Link>
-                        </div>
-                      </div>
+                        {/* AdSense: After the 4th job card */}
+                        {idx === 3 && (
+                          <div className="col-span-full my-2">
+                            <AdBanner slotId="jobs-feed-banner" minHeight={260} />
+                          </div>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </div>

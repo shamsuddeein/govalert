@@ -8,6 +8,7 @@ import { SeoHead } from "../components/SeoHead";
 import { BackButton } from "../components/BackButton";
 import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
+import { AdBanner } from "../components/AdBanner";
 
 export const Route = createFileRoute("/blog/$slug")({
   component: BlogPostDetailPage,
@@ -64,6 +65,7 @@ function renderMarkdownContent(content: string) {
   let match: RegExpExecArray | null;
 
   let keyCounter = 0;
+  let paragraphCount = 0;
 
   const processTextChunk = (text: string) => {
     const lines = text.split("\n");
@@ -109,6 +111,7 @@ function renderMarkdownContent(content: string) {
         listItems.push(trimmed.replace(/^[-1234567890\.]+\s+/, ""));
       } else if (trimmed.length > 0) {
         flushList();
+        paragraphCount++;
         elements.push(
           <p
             key={`p-${keyCounter++}`}
@@ -116,6 +119,15 @@ function renderMarkdownContent(content: string) {
             dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }}
           />
         );
+
+        // AdSense Placement: After paragraph 3
+        if (paragraphCount === 3) {
+          elements.push(
+            <div key="ad-in-article" className="my-8">
+              <AdBanner slotId="blog-article-inline" minHeight={280} />
+            </div>
+          );
+        }
       }
     });
 

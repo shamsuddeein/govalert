@@ -102,6 +102,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "robots", content: "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" },
       { name: "author", content: "RecruitmentAlert" },
       { name: "google-site-verification", content: "kR7UcDpncxOJecVqCmw0GrzlmRq77nWrG8Nd_UsTjjk" },
+      { name: "google-adsense-account", content: "ca-pub-5879973938003381" },
       {
         property: "og:title",
         content: "NNPC, NCS & Federal Government Jobs 2026. RecruitmentAlert",
@@ -155,6 +156,11 @@ function RootShell({ children }: { children: ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="dark"){document.documentElement.classList.add("dark");}else{document.documentElement.classList.remove("dark");}}catch(e){document.documentElement.classList.remove("dark");}})();`,
           }}
+        />
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5879973938003381"
+          crossOrigin="anonymous"
         />
         <HeadContent />
       </head>

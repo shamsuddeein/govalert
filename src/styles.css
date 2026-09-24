@@ -287,3 +287,12 @@ img, svg, video, canvas {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Google AdSense container and dark mode smoothing */
+.adsbygoogle {
+  background-color: transparent !important;
+  color-scheme: light dark;
+}
+.dark .adsbygoogle {
+  color-scheme: dark;
+}

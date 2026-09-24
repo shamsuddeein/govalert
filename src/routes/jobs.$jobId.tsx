@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { OfficialSourceLink } from "../components/OfficialSourceLink";
 import { SeoHead } from "../components/SeoHead";
 import { ArrowLeft, CheckCircle2, AlertTriangle, Bookmark, Check } from "lucide-react";
+import { AdBanner } from "../components/AdBanner";
 
 function renderFormattedDescription(rawText: string | undefined | null) {
   if (!rawText || !rawText.trim()) {
@@ -35,6 +36,72 @@ function renderFormattedDescription(rawText: string | undefined | null) {
 }
 
 export const Route = createFileRoute("/jobs/$jobId")({
+  loader: async ({ params }) => {
+    const rawRef = params.jobId || "GA";
+    return {
+      jobRef: rawRef,
+    };
+  },
+  head: ({ loaderData, params }) => {
+    const ref = loaderData?.jobRef || params.jobId;
+    const title = `Verified Government Job Notice (${ref}) 2026: Requirements & Application Link`;
+    const description = `Verified Nigerian public sector recruitment notice (REF: ${ref}). Check official .gov.ng portal verification status, application deadline, and authentic apply links.`;
+    const canonicalUrl = `https://www.recruitmentalert.com.ng/jobs/${ref}`;
+
+    const faqSchema = {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How do I apply for this verified federal government job?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Click the 'Apply on Official Portal' link to be securely redirected to the verified .gov.ng portal. Never apply on unofficial third-party websites or blogs."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is there an application fee for this recruitment?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. By Nigerian federal public service regulations, all official recruitment exercises are 100% free. Any request for money, gift cards, or bank transfers is a scam."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How is this recruitment notice verified?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "RecruitmentAlert verifies source domains against official NITDA .gov.ng registries and cross-references published gazettes before issuing trust scores."
+          }
+        }
+      ]
+    };
+
+    return {
+      meta: [
+        { title },
+        { name: "description", content: description },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:url", canonicalUrl },
+        { property: "og:type", content: "article" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+      ],
+      links: [
+        { rel: "canonical", href: canonicalUrl },
+      ],
+      scripts: [
+        {
+          type: "application/ld+json",
+          children: JSON.stringify(faqSchema),
+        },
+      ],
+    };
+  },
   component: JobDetailPage,
 });
 
@@ -394,6 +461,11 @@ function JobDetailPage() {
             </div>
           </div>
         </section>
+
+        {/* AdSense: Below verification card, separated from primary Apply CTA */}
+        <div className="my-6">
+          <AdBanner slotId="job-detail-verification" minHeight={260} />
+        </div>
 
         <Divider />
 
